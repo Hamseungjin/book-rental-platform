@@ -1,0 +1,13 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { adminApi } from '../api/endpoints'
+import { getApiError } from '../api/client'
+import { PageHeader } from '../components/PageHeader'
+import { RequireRole } from '../components/RequireRole'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { EmptyState, ErrorAlert, LoadingState } from '../components/ui/Feedback'
+import { Input } from '../components/ui/Field'
+import { formatDate } from '../utils/format'
+import { useAuth } from '../features/auth/AuthContext'
+export function AdminBorrowRequestsPage(){const qc=useQueryClient();const [memo,setMemo]=useState<Record<number,string>>({});const {userId,hasRole}=useAuth();const q=useQuery({queryKey:['admin-requests',userId],queryFn:adminApi.requests,enabled:hasRole('ADMIN')});const done=()=>{qc.invalidateQueries({queryKey:['admin-requests']});qc.invalidateQueries({queryKey:['admin-dashboard']});qc.invalidateQueries({queryKey:['admin-loans']})};const approve=useMutation({mutationFn:adminApi.approveRequest,onSuccess:done});const reject=useMutation({mutationFn:({id,memo}:{id:number;memo:string})=>adminApi.rejectRequest(id,memo),onSuccess:done});const error=approve.error||reject.error;return <RequireRole role="ADMIN"><PageHeader title="대여 요청 관리" description="승인 시 재고가 차감되고 실제 대출 이력이 생성됩니다."/>{error&&<div className="mb-4"><ErrorAlert message={`처리에 실패했습니다: ${getApiError(error)}`}/></div>}{q.isLoading?<LoadingState/>:q.isError?<ErrorAlert message={getApiError(q.error)}/>:!q.data?.length?<EmptyState title="대여 요청이 없습니다."/>:<div className="table-wrap"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-4">요청</th><th className="p-4">책</th><th className="p-4">수량</th><th className="p-4">상태</th><th className="p-4">처리</th></tr></thead><tbody className="divide-y">{q.data.map(r=><tr key={r.id}><td className="p-4"><strong>{r.borrowerName}</strong><div className="text-xs text-slate-500">{formatDate(r.requestedAt)}</div></td><td className="p-4">{r.bookTitle}</td><td className="p-4">{r.quantity}권</td><td className="p-4"><Badge value={r.status}/></td><td className="p-4">{r.status==='REQUESTED'?<div className="flex min-w-72 gap-2"><Input value={memo[r.id]??''} onChange={e=>setMemo({...memo,[r.id]:e.target.value})} placeholder="거절 메모(선택)"/><Button onClick={()=>approve.mutate(r.id)}>승인</Button><Button variant="danger" onClick={()=>reject.mutate({id:r.id,memo:memo[r.id]??''})}>거절</Button></div>:<span className="text-xs text-slate-400">처리 완료</span>}</td></tr>)}</tbody></table></div>}</RequireRole>}

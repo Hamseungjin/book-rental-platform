@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<div class="card" th:fragment="evaluationItemList(evaluationItemList)">
+  <div class="card-header fw-bold">평가표</div>
+  <div class="card-body">
+    <div class="table-responsive rounded">
+      <table id="evaluation-table" class="table">
+        <thead>
+        <tr class="fw-bold">
+          <th scope="col">항목</th>
+          <th scope="col">평가지표</th>
+          <th scope="col">배점</th>
+        </tr>
+        </thead>
+        <tbody>
+        <th:block th:each="evaluationItem, index : ${evaluationItemList}">
+
+            <tr th:each="evaluationIndicator, idx : ${evaluationItem.getEvaluationIndicatorList()}">
+              <td th:if="${idx.index == 0}" th:rowspan="${evaluationItem.getEvaluationIndicatorList().size()}" th:text="${evaluationItem.getName()}" class="fw-bold"></td>
+              <td th:text="${evaluationIndicator.getDescription()}" class="text-break common-line-height"></td>
+              <td>
+                <div th:each="point, i : ${evaluationIndicator.getPoints()}" class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" th:name="|${teamId}-${evaluationItem.getId()}-${evaluationIndicator.getId()}|" th:id="|${teamId}-${evaluationItem.getId()}-${evaluationIndicator.getId()}-${i.index}|" th:value="${point}">
+                  <label class="form-check-label" th:for="|${teamId}-${evaluationItem.getId()}-${evaluationIndicator.getId()}-${i.index}|" th:text="${point}"></label>
+                </div>
+              </td>
+            </tr>
+
+        </th:block>
+        </tbody>
+      </table>
+    </div>
+    <!--  평가 의견  -->
+    <div class="fw-bold mb-2">평가 의견</div>
+    <div class="position-relative">
+      <textarea class="form-control" id="evaluation-opinion" rows="4" placeholder="* 평가항목에 대한 종합판단 기술(필요시) / 가점부여시 사유 기술"
+      th:text="${evaluationOpinion}"></textarea>
+      <span id="evaluation-opinion-invalid-feedback" class="invalid-tooltip"></span>
+    </div>
+  </div>
+</div>
+</html>

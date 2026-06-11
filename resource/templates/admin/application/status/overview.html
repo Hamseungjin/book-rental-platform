@@ -1,0 +1,151 @@
+  <!--     개요       -->
+  <div class="tab-pane fade active show" id="bordered-overview">
+    <h5 class="card-title">
+      팀 구성
+    </h5>
+
+    <div class="row">
+      <div class="col-lg-3 col-md-4 label ">분야</div>
+      <div class="col-lg-9 col-md-8">
+        <div th:text ="${contestField}"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-lg-3 col-md-4 label">팀명</div>
+      <div class="col-lg-9 col-md-8">
+        <div id= "teamName" th:text ="${teamName}"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-lg-3 col-md-4 label">계정명</div>
+      <div class="col-lg-9 col-md-8">
+        <div th:text ="${userId}"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-lg-3 col-md-4 label">과제명</div>
+      <div class="col-lg-9 col-md-8">
+        <div th:text ="${projectName}"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-lg-3 col-md-4 label">접수번호</div>
+      <div class="col-lg-9 col-md-8">
+        <div th:text ="${teamId}"></div>
+      </div>
+    </div>
+
+    <h5 class="card-title" id="chief">
+      팀원정보
+    </h5>
+
+    <table id="member" class="table table-hover" style="width:100%">
+      <thead>
+      <tr>
+        <th class="no-sort">ID</th>
+        <th class="no-sort">직급</th>
+        <th class="no-sort">신분</th>
+        <th class="no-sort">상세신분</th>
+        <th class="no-sort">이름</th>
+        <th class="no-sort">소속</th>
+        <th class="no-sort">세부소속</th>
+        <th class="no-sort">생년월일</th>
+        <th class="no-sort">휴대전화</th>
+        <th class="no-sort">이메일</th>
+      </tr>
+      </thead>
+    </table>
+
+  </div>
+
+  <script th:inline="javascript">
+
+    $(document).ready(function() {
+
+      const teamName = [[${teamName}]];
+      const addData = { findBy : teamName };
+
+      $.fn.dataTable.Buttons.defaults.dom.button.className = 'btn';
+
+      var table = $('#member').DataTable({
+
+        "fnDrawCallback" : function(oSettings) {
+          $('.dataTables_paginate').hide();
+        },
+
+        "searching": false,
+        "info": false,
+        "lengthMenu": false,
+        "lengthChange": false,
+        "language": {
+          "lengthMenu": "",
+          "search": "검색 :",
+          "info": "",
+          "paginate": {
+            "first": "처음",
+            "last": "마지막",
+            "next": "다음",
+            "previous": "이전"
+           },
+        },
+        "serverSide": true,
+        "processing": true,
+        "bSort": true,
+        "ajax": {
+          "url": "/alr20/admin/memberSearch",
+          "type": "POST",
+          "dataType": "json",
+          "contentType": "application/json; charset=utf-8",
+          // 서버 전송 내용
+          "data":
+                  function (d) {
+                    return JSON.stringify($.extend( {} , d, addData));
+                  },
+          // 서버 응답
+          "dataFilter":
+                  function (response) {
+
+                    return response;
+                  }
+        },
+
+        "preDrawCallback": function(){
+          $('.btn-group').removeClass('btn-group');
+        },
+
+        "columns": [
+          {"data": "id",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "memberRoleString",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "memberRankString",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "memberRankName",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "name",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "group",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "birthday",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "phone",
+            "render" : $.fn.dataTable.render.text()},
+          {"data": "mail",
+            "render" : $.fn.dataTable.render.text()}
+        ],
+
+        columnDefs:[{
+          bSortable: false, targets: 'no-sort',
+        }
+        ,{
+          visible: false, targets: 0
+        }
+         ],
+      });
+    });
+
+  </script>

@@ -1,0 +1,345 @@
+
+<div class="tab-pane fade" id="bordered-finalScore">
+    <div class="row">
+        <div class="card-body" style="margin-top: 1.5rem;">
+            <table id="finalScore" class="table table-hover text-break" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>예선분야</th>
+                        <th>팀명</th>
+                        <th>프로젝트명</th>
+                        <th>심사순서</th>
+                        <th>심사진행도</th>
+                        <th>순위</th>
+                        <th class="no-sort">최종수상</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+
+
+<script th:inline="javascript">
+    $(document).ready(function(){
+
+        $.fn.dataTable.Buttons.defaults.dom.button.className = 'btn';
+
+        const addData = { findBy : "all" };
+
+        const teamCount = [[${teamCount}]];
+
+        let orderArr = [[${mainTeamOrderList}]];
+
+        let prizeArr = new Array();
+
+        var mainTable = $('#finalScore').DataTable( {
+            dom: 'B<"#selectDesignated">frtp',
+            "info": false,
+            "lengthMenu": false,
+            "lengthChange": false,
+            "language": {
+                "lengthMenu": "",
+                "search": "팀명검색 :",
+                "info": "",
+                "paginate": {
+                    "first": "처음",
+                    "last": "마지막",
+                    "next": "다음",
+                    "previous": "이전"
+                },
+                "zeroRecords": "데이터가 없습니다"
+            },"pagingType": "full_numbers",
+            "searchDelay": 500,
+            "serverSide": true,
+            "processing": true,
+            "bSort": true,
+            "ajax": {
+                "url": "/alr20/admin/evaluation/scoreStatus/main",
+                "type": "POST",
+                "dataType": "json",
+                "contentType": "application/json; charset=utf-8",
+                // 서버 전송 내용
+                "data":
+                    function (d) {
+                        return JSON.stringify($.extend( {} , d, addData));
+                    },
+                // 서버 응답
+                "dataFilter":
+                    function (response) {
+
+                    if(JSON.parse(response).recordsTotal == 0 ){
+                        $('#bordered-finalScore .excel').attr("disabled", true);
+                        $('#savePrize').attr("disabled", true);
+                    }
+                        return response;
+                    }
+            },
+
+            "columns": [
+                {   "data" : "contestFieldString",
+                    "render" : $.fn.dataTable.render.text(),
+                    "width": "14%"
+                },
+                {   "data" : "name",
+                    "render" : $.fn.dataTable.render.text()},
+                {   "data" : "projectName",
+                    "render" : $.fn.dataTable.render.text(),
+                    "width": "24%"},
+                { "data" : null},
+                {   "data" : "percent",
+                    "render": function(data,type, row, meta) {
+                        return type === 'display' ?
+                            '<div class="progress">' +
+                            '<div class="progress-bar" role="progressbar" style="width:' + data + '%;" aria-valuenow="' + data + '" aria-valuemin="0" aria-valuemax="100">' + data + '%</div>' +
+                            '</div>':data;
+                    }
+                },
+                {   "data" : "rank",
+                    "render" : $.fn.dataTable.render.text()
+                },
+                {"data" : null}
+            ],
+
+            "drawCallback": function(){
+
+                const check = ([[${isMainAllGrade}]].toString() === 'false');
+
+                if( check ){
+                    $('.prize').attr("disabled", true);
+                } else{
+                    $('.order').attr("disabled", true);
+                }
+
+                $(orderArr).each(function(){
+                    $('.order option[value="'+ this.order + '"]').prop('disabled', true);
+                });
+                $('.order option[value="none"]').prop('disabled', false);
+            },
+
+            "rowCallback": function(row, data){
+
+                $(orderArr).each(function(){
+                   if(this.name === data.name){
+                       if (this.order !== '0')
+                           $('td:eq(3)', row).children('select').val(this.order).prop("selected", true);
+                   }
+                });
+
+                $(prizeArr).each(function(){
+                    if(this.name === data.name){
+                        $('td:eq(6)', row).children('select').val(this.prize).prop("selected", true);
+                    }
+                });
+
+            },
+
+            "preDrawCallback": function(){
+                $('.btn-group').removeClass('btn-group');
+            },
+
+            columnDefs:[{
+                bSortable: false, targets: 'no-sort'
+            }, {
+                'targets': 3,
+                'searchable': false,
+                'orderable': false,
+                'className': 'dt-body-center',
+                'render': function (data, type, full, meta) {
+
+                   let addOption = "";
+                    for(let i = 0; i<teamCount; i++){
+                        addOption += "<option value = \"" + (i+1) + "\" >" + (i+1) + "번" +"</option>";
+                    }
+
+                    const defaultAdd = "<option value = \"none\">" + "선택" + "</option>";
+
+                    return '<select class="form-select form-select-sm order" >' +
+                        defaultAdd +
+                        addOption +
+                        '</select>';
+                }
+            },
+                {
+                'targets': 6,
+                'searchable': false,
+                'orderable': false,
+                'className': 'dt-body-center',
+                'render': function (data, type, full, meta) {
+                    return '<select class="form-select form-select-sm prize">' +
+                        '<option value="FAILED">선택</option>' +
+                        '<option value="GRANDPRIZE">대상</option>' +
+                        '<option value="BESTEXCELLENCEPRIZE">최우수상</option>' +
+                        '<option value="EXCELLENCEPRIZE">우수상</option>' +
+                        '<option value="PARTICIPATIONPRIZE">장려상</option>' +
+                        '</select>';
+                }
+            }],
+
+            buttons: [
+                {
+                    text: '<i class="fa fa-table"></i>EXCEL',
+                    className: 'btn btn-success excel',
+                    action: function(){
+                        window.location = '/alr20/admin/download/mainStatusExcel'
+                    }
+                },
+
+                {
+                    text: '<i class="fa fa-download"></i>결과저장',
+                    className: 'btn btn-warning',
+                    attr: {
+                        id : 'savePrize'
+                    }
+                }
+            ],
+        });
+
+        $("#selectDesignated").html('<select id="designatedFilter" class="form-select form-select-sm" >' +
+            '<option value="all">전체</option>' +
+            '<option value="public">자유공모</option>' +
+            '<option value="designated">지정공모</option>' +
+            '</select>');
+
+        $('#selectDesignated').on( 'change', function() {
+            const value = $("#selectDesignated option:selected").val();
+
+            addData.findBy = value;
+
+            mainTable.ajax.reload();
+        });
+
+        let indicatorPrevious;
+        $(document).on('focus', '.order', function(){
+            indicatorPrevious = this.value;
+        }).on('change','.order', function(){
+            $('.order').trigger("blur");
+
+            if(indicatorPrevious !== 'none'){
+                if(this.value !== 'none'){
+                    $('.order option[value="'+ indicatorPrevious + '"]').prop('disabled', false);
+                    $('.order option[value="'+ this.value + '"]').prop('disabled', true);
+                } else {
+                    $('.order option[value="'+ indicatorPrevious + '"]').prop('disabled', false);
+                }
+            } else {
+                $('.order option[value="'+ this.value + '"]').prop('disabled', true);
+            }
+
+            let data = new Object();
+
+            const name = $(this).parent().parent().find("td").eq(1).text();
+            const order = $(this).parent().parent().find("td").find('.order option:selected').val();
+
+            data.name = name;
+            data.order = order;
+
+            for(let i = 0; i<orderArr.length; i++){
+                if(orderArr[i].name === name){
+                    orderArr[i].order = order;
+                }
+            }
+
+        });
+
+        let indicatorPrevious2;
+        $(document).on('focus', '.prize', function(){
+            indicatorPrevious2 = this.value;
+        }).on('change','.prize', function(){
+            $('.prize').trigger("blur");
+
+            let data = new Object();
+
+            const name = $(this).parent().parent().find("td").eq(1).text();
+            const prize = $(this).parent().parent().find("td").find('.prize option:selected').val();
+
+            data.name = name;
+            data.prize = prize;
+
+            for(let i = 0; i<prizeArr.length; i++){
+                if(prizeArr[i].name === name){
+                    prizeArr.splice(i, 1);
+                    i--;
+                }
+            }
+
+            if(prize !== 'FAILED')
+                prizeArr.push(data);
+        });
+
+
+        $('#savePrize').click(function(){
+
+            const check = ([[${isMainAllGrade}]].toString() === 'false');
+
+            if(check){
+                if(confirm("심사순서가 설정됩니다")){
+
+                    $.ajax({
+                        url: '/alr20/admin/evaluation/scoreStatus/main/order',
+                        method: 'POST',
+                        data: JSON.stringify(orderArr),
+                        contentType: 'application/json; charset=utf-8',
+                        success: function (res) {
+                            alert(res.message);
+                            $('#qualifyScore').DataTable().ajax.reload();
+                            $('#finalScore').DataTable().ajax.reload();
+                        },
+                        error: function (res) {
+                            alert(res.responseJSON.message);
+                        }
+                    })
+
+                }
+
+            } else {
+                if (confirm("선택한 팀의 수상이 설정됩니다.")) {
+
+                    $.ajax({
+                        url: '/alr20/admin/evaluation/scoreStatus/main/prize',
+                        method: 'POST',
+                        data: JSON.stringify(prizeArr),
+                        contentType: 'application/json; charset=utf-8',
+                        success: function (res) {
+                            alert(res.message);
+                            $('#qualifyScore').DataTable().ajax.reload();
+                            $('#finalScore').DataTable().ajax.reload();
+                        },
+                        error: function (res) {
+                            alert(res.responseJSON.message);
+                        }
+                    });
+                }
+            }
+        });
+
+    });
+</script>
+
+<style>
+    .btn-warning *{
+        color: #fff;
+    }
+
+    .pagination {
+        justify-content : center !important;
+    }
+
+    .tab-pane .row button{
+        margin-right:inherit;
+    }
+
+    .btn-warning.disabled, .btn-warning:disabled {
+        background-color: #9d9c9c;
+        border-color: #9d9c9c;
+    }
+
+    #selectDesignated {
+        float: right;
+        margin-left: 1rem;
+    }
+
+</style>

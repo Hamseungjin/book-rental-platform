@@ -1,0 +1,89 @@
+<div class="modal fade" id="bordered-modify-judge">
+  <div class="modal modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">심사위원 수정</h5>
+      </div>
+
+      <div class="modal-body">
+
+        <form>
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label">분야</label>
+
+            <div class="col-sm-10">
+              <select class="form-select" id="modifyContestRound" disabled>
+                <option value="PRELIMINARY">예선</option>
+                <option value="MAIN">본선</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row mb-3 collapse show" id = "modifySelectContestField">
+            <label class="col-sm-2 col-form-label">심사분야</label>
+
+            <div class="col-sm-10">
+              <select class="form-select" id="modifyContestField" disabled>
+                <option th:each="data : ${contestFieldType}" th:value="${data.key}" th:text="${data.value}"></option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row mb-3 collapse hide" id = "modifySelectMainPublic">
+            <label class="col-sm-2 col-form-label">심사분야</label>
+
+            <div class="col-sm-10">
+              <select class="form-select" id="modifyMainPublic" disabled>
+                <option value="public">자유공모</option>
+                <option value="designated">지정공모</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label">이름</label>
+            <div class="col-sm-10">
+              <input type="text" class="form-control" id="modifyName">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label">아이디</label>
+            <div class="col-sm-10">
+              <input type="text" class="form-control" id="modifyUserId" disabled>
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label">직급</label>
+            <div class="col-sm-10">
+              <input type="text" class="form-control" id="modifyRank">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label">휴대전화</label>
+            <div class="col-sm-10">
+              <input type="text" class="form-control phoneNumber" id="modifyPhone">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-2 col-form-label">소속</label>
+            <div class="col-sm-10">
+              <input type="email" class="form-control" id="modifyMainGroup">
+            </div>
+          </div>
+
+        </form>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="reset">닫기</button>
+          <button type="button" class="btn btn-primary" id="modifySubmit">저장</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

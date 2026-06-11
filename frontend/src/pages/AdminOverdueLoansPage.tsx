@@ -1,0 +1,10 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { adminApi, loansApi } from '../api/endpoints'
+import { getApiError } from '../api/client'
+import { PageHeader } from '../components/PageHeader'
+import { RequireRole } from '../components/RequireRole'
+import { EmptyState, ErrorAlert, LoadingState } from '../components/ui/Feedback'
+import { LoanTable } from './AdminLoansPage'
+import { useAuth } from '../features/auth/AuthContext'
+export function AdminOverdueLoansPage(){const qc=useQueryClient();const {userId,hasRole}=useAuth();const q=useQuery({queryKey:['admin-overdue-loans',userId],queryFn:adminApi.overdueLoans,enabled:hasRole('ADMIN')});const m=useMutation({mutationFn:loansApi.returnBook,onSuccess:()=>{qc.invalidateQueries({queryKey:['admin-overdue-loans']});qc.invalidateQueries({queryKey:['admin-loans']});qc.invalidateQueries({queryKey:['admin-dashboard']})}});return <RequireRole role="ADMIN"><PageHeader title="연체 대출" description="반납 기한이 지난 대출 목록입니다." action={<Link className="text-sm font-semibold text-brand-700" to="/admin/loans">전체 대출 보기 →</Link>}/>{m.isError&&<div className="mb-4"><ErrorAlert message={getApiError(m.error)}/></div>}{q.isLoading?<LoadingState/>:q.isError?<ErrorAlert message={getApiError(q.error)}/>:!q.data?.length?<EmptyState title="연체 중인 대출이 없습니다."/>:<LoanTable loans={q.data} onReturn={id=>m.mutate(id)} pending={m.isPending}/>}</RequireRole>}

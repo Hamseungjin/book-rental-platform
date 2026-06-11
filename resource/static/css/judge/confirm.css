@@ -1,0 +1,16 @@
+.confirm-content-container {
+    padding-top: 2.5rem;
+    height: 90%;
+    max-width: 66.8rem;
+    flex-direction: column;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+@media screen and (max-width:600px) {
+    .confirm-content-container {
+
+    }
+}

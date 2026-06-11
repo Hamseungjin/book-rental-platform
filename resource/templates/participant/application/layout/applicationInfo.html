@@ -1,0 +1,110 @@
+<div class="row mt-5 justify-content-center">
+  <div class="col-sm-12 col-md-12 px-md-5">
+    <div class="container py-4">
+      <!--   주의사항   -->
+      <div class="row py-4 border">
+        <div class="col-sm-12 py-1">※ 어떤 이유를 불문하고 가명, 차명을 통한 신청 불가하며, 참가권 양도 또한 불가능</div>
+        <div class="col-sm-12 py-1">※ 가명, 차명 참가권 양도 등의 사실이 밝혀질 경우 불이익을 당할 수 있음</div>
+        <div class="col-sm-12 py-1">※ 멘토링은 팀원 일부 참가 가능하며, 본선은 팀 전원 참석(필수)</div>
+      </div>
+      <!--   인지 경로   -->
+      <div class="row py-4 border">
+        <div class="col-sm-12 col-md-3 border-end d-flex align-items-center justify-content-center">
+          <p class="h5 fw-bold text-center">인지 경로<span class="text-danger">*</span></p>
+        </div>
+        <div class="col-sm-12 col-md-9 d-flex align-items-center justify-content-center">
+          <div class="position-relative row">
+            <div class="col-sm-12 col-md-12 d-flex flex-column align-items-start">
+              <div class="form-check my-1" th:each="recognitionPath : ${T(mil.af.domain.enums.RecognitionPathEnum).values()}">
+                <input class="form-check-input" type="checkbox" th:id="'recognition-path-' + ${recognitionPath}" th:value="${recognitionPath}">
+                <label class="form-check-label" th:text="${recognitionPath.getKrName()}"></label>
+              </div>
+              <input id="recognition-path-ETC-description" name="recognition-path-ETC-description"
+                     type="text" class="form-control form-control-sm" placeholder="기타 내용을 입력하세요." disabled>
+              <span id="recognition-path-ETC-description-invalid-feedback" class="invalid-tooltip"></span>
+            </div>
+            <span id="recognition-path-invalid-feedback" class="invalid-tooltip"></span>
+          </div>
+        </div>
+      </div>
+      <!--   제출    -->
+      <div class="row py-4 border">
+        <p class="h5 text-center common-line-height">
+          상기 작성 내용은 사실과 다름이 없으며,<br>
+          참가 안내서의 내용 및 유의사항을 충분히 숙지하였습니다.<br>
+          본인은 제 <span th:text="${currentContestNum}">0</span>회 공군 『창의·혁신 아이디어 공모』 해커톤에<br>
+          참여하기 위하여 신청서를 제출합니다.
+        </p>
+        <p class="h4 text-center common-line-height fw-bold mb-0" th:text="${#calendars.format(#calendars.createNow(), 'yyyy년 MM월 dd일')}">20XX년 X월 X일</p>
+        <p class="h4 text-center common-line-height fw-bold">공군 참모총장 귀하</p>
+      </div>
+
+      <!--  동의서, 기획서 등    -->
+      <div class="row py-4 border">
+        <p class="h5 text-center fw-bold">제출 파일 양식</p>
+        <p class="h6 text-center text-danger">※ 모든 파일은 작성 후 <span class="fw-bold">pdf</span>로 변환하여 제출하시기 바랍니다.</p>
+        <p class="h6 text-center text-danger mb-4">※ <span class="fw-bold">개인정보제공 동의서</span> 안내 : 팀원이 여러명일 경우 <span class="fw-bold">하나의 파일</span>로 합쳐서 제출하시기 바랍니다.</p>
+        <p class="h6 text-center text-danger mb-4">※ <span class="fw-bold">지정공모(자유공모) 선택 후 아이디어기획서 및 요약서 양식 확인</span></p>
+
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">(지정공모)아이디어 기획서</label>
+          <a th:href="@{/application/file/personal-info-file}" class="d-block text-decoration-none"
+             target="_blank">[지정공모]아이디어 기획서.hwp</a>
+        </div>
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">(지정공모)아이디어 요약서</label>
+          <a th:href="@{/application/file/copyright-file}" class="d-block text-decoration-none"
+             target="_blank">[지정공모]아이디어 요약서.hwp</a>
+        </div>
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">(자유공모)아이디어 기획서</label>
+          <a th:href="@{/application/file/idea-plan-file}" class="d-block text-decoration-none"
+             target="_blank" id="sample-idea-file">[자유공모]아이디어 기획서.hwp</a>
+        </div>
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">(자유공모)아이디어 요약서</label>
+          <a th:href="@{/application/file/idea-summary-file}" class="d-block text-decoration-none"
+             target="_blank" id="sample-summary-file">[자유공모]아이디어 요약서.hwp</a>
+        </div>
+      </div>
+      <!--  동의서, 기획서 등    -->
+      <div class="row py-4 border">
+        <p class="h5 text-center fw-bold">서류 제출란</p>
+        <p class="h6 text-center text-danger mb-4">※ 주의 : <span class="fw-bold">1면 1페이지</span>로 저장하여 업로드하시기 바랍니다.</p>
+        <p class="h6 text-center text-danger mb-4">※ 주의 : <span class="fw-bold">파일명은 팀명_동의서/팀명_기획서 형식으로 업로드 해주시기 바랍니다. (띄어쓰기, [, ], _ 외 특수문자 X)</span></p>
+        <div class="position-relative col-sm-12 col-md-6 py-2">
+          <label for="personal-info-file" class="form-label">개인정보제공동의서(신청서)<span class="text-danger">*</span></label>
+          <input class="form-control w-75 w-sm-100" type="file" id="personal-info-file" name="personal-info-file">
+          <span id="personal-info-file-invalid-feedback" class="invalid-tooltip"></span>
+        </div>
+        <div class="position-relative col-sm-12 col-md-6 py-2">
+          <label for="copyright-file" class="form-label">저작권동의서<span class="text-danger">*</span></label>
+          <input class="form-control w-75 w-sm-100" type="file" id="copyright-file" name="copyright-file">
+          <span id="copyright-file-invalid-feedback" class="invalid-tooltip"></span>
+        </div>
+        <div class="position-relative col-sm-12 col-md-6 py-2">
+          <label for="idea-plan-file" class="form-label">아이디어기획서<span class="text-danger">*</span></label>
+          <input class="form-control w-75 w-sm-100" type="file" id="idea-plan-file" name="idea-plan-file">
+          <span id="idea-plan-file-invalid-feedback" class="invalid-tooltip"></span>
+        </div>
+        <div class="position-relative col-sm-12 col-md-6 py-2">
+          <label for="idea-summary-file" class="form-label">아이디어요약서<span class="text-danger">*</span></label>
+          <input class="form-control w-75 w-sm-100" type="file" id="idea-summary-file" name="idea-summary-file">
+          <span id="idea-summary-file-invalid-feedback" class="invalid-tooltip"></span>
+        </div>
+        <div class="col-sm-12 col-md-12 pt-3 pb-2 text-center">
+          * 용량제한 : 각 파일당 5MB * 확장자 : PDF
+        </div>
+      </div>
+      <!--  제출/취소/출력   -->
+      <div class="row py-4 align-items-center justify-content-center">
+        <div class="col-md-3 col-sm-12"></div>
+        <div class="col-md-4 col-sm-12 d-flex justify-content-around">
+          <button type="button" class="btn btn-primary btn-lg text-white" onclick="submitApplication(event)">제출</button>
+          <button type="button" class="btn btn-warning btn-lg text-white" onclick="cancelHandler()">취소</button>
+        </div>
+        <div class="col-md-3 col-sm-12"></div>
+      </div>
+    </div>
+  </div>
+</div>

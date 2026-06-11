@@ -1,0 +1,259 @@
+<div th:replace="admin/sideNav.html"></div>
+
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>수상자현황</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a th:href="@{/admin/main}"><i class="bi bi-house-door"></i></a></li>
+        <li class="breadcrumb-item active">수상자현황</li>
+      </ol>
+    </nav>
+  </div><!-- End Page Title -->
+
+  <section class="section dashboard">
+    <div class="row">
+      <div class="card">
+        <div class="card-body" style="margin-top: 1.5rem;">
+          <table id="prize" class="table table-hover" style="width:100%">
+            <thead>
+              <tr>
+                <th>구분</th>
+                <th>훈격</th>
+                <th>분야</th>
+                <th>팀명</th>
+                <th>프로젝트명</th>
+                <th class="no-sort">상세보기</th>
+              </tr>
+            </thead>
+          </table>
+
+          <div class="teamInfoModal modal fade" id="statusModal" tabindex="-1" role="dialog" aria-labelledby="statusModal" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+              <div class="modal-content">
+
+                <div class="modal-header">
+                  <h5 class="modal-title">상세팀원</h5>
+                </div>
+
+                <div class="modal-body">
+                  <table id="team_member" class="table table-hover" style="width:100%">
+                    <thead>
+                      <tr>
+                        <th class="no-sort">ID</th>
+                        <th class="no-sort">직급</th>
+                        <th class="no-sort">신분</th>
+                        <th class="no-sort">이름</th>
+                        <th class="no-sort">소속</th>
+                        <th class="no-sort">세부소속</th>
+                        <th class="no-sort">생년월일</th>
+                        <th class="no-sort">휴대전화</th>
+                        <th class="no-sort">이메일</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="close">닫기</button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main><!-- End #main -->
+
+<div th:replace="admin/footer.html"></div>
+
+<script>
+  $(document).ready(function() {
+
+    const addData = { findBy : "all" };
+
+    var table = $('#prize').DataTable( {
+      dom: 'B<"#select">frtp',
+      "info": false,
+      "lengthMenu": false,
+      "lengthChange": false,
+      "language": {
+        "lengthMenu": "",
+        "search": "팀명검색 :",
+        "info": "",
+        "paginate": {
+          "first": "처음",
+          "last": "마지막",
+          "next": "다음",
+          "previous": "이전"
+        },
+        "zeroRecords": "데이터가 없습니다"
+      },"pagingType": "full_numbers",
+      "serverSide": true,
+      "processing": true,
+      "bSort": true,
+      "ajax": {
+        "url": "/alr20/admin/prizeStatus",
+        "type": "POST",
+        "dataType": "json",
+        "contentType": "application/json; charset=utf-8",
+        "data":
+                function (d) {
+
+                  return JSON.stringify($.extend( {} , d, addData));
+                },
+        "dataFilter":
+                function (response) {
+                  if(JSON.parse(response).recordsTotal == 0 ){
+                    $('.excel').attr("disabled", true);
+                  }
+                  return response;
+                }
+      },
+
+      "columns": [
+        {"data" : "contestNum",
+          "render": function(data,type, row, meta) {
+            return data + "회차";
+          }},
+        {"data" : "prizeStatusString","render" : $.fn.dataTable.render.text()},
+        {"data" : "contestFieldString","render" : $.fn.dataTable.render.text()},
+        {"data" : "name","render" : $.fn.dataTable.render.text()},
+        {"data" : "projectName","render" : $.fn.dataTable.render.text()},
+        {
+          "data": null,
+          "render": function(data, type, row){
+            return '<button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target=".teamInfoModal"><i class="fa fa-info-circle"></i>상세보기</button>';
+          }
+        }
+      ],
+
+      columnDefs:[{
+        bSortable: false, targets: 'no-sort'
+      }],
+
+      buttons: [
+        {
+          text: '<i class="fa fa-table"></i>EXCEL',
+          className: 'btn btn-success excel',
+          action: function(){
+            window.location = '/alr20/admin/download/prizeStatusExcel'
+          }
+        }
+      ],
+
+      // btn-group 클래스 삭제
+      initComplete: function() {
+        var btns = $('.btn-group');
+        btns.removeClass('btn-group')
+      }
+    });
+
+    $("#select").html('<select id="contestNumFilter" class="form-select form-select-sm" >' +
+            '<option value="all">전체</option>' +
+            '</select>');
+    const data = [[${contestNumList}]];
+    let addOption = "";
+    for (const i of data.values()) {
+        addOption += "<option value = \"" + i + "\" >" + i + "회차" +"</option>";
+    }
+    $('#contestNumFilter').append(addOption);
+
+    $('#prize tbody').on( 'click', 'button', function (e) {
+
+      const data = table.row( $(this).parents('tr') ).data();
+      const addData = { findBy : Object.values(data)[4] };
+
+      $('#team_member').DataTable({
+
+        "dom": "t",
+        "autoWidth": false,
+        "info": false,
+        "lengthMenu": false,
+        "lengthChange": false,
+        "searching": false,
+        "language": {
+          "lengthMenu": "",
+          "search": "팀명검색 :",
+          "info": "",
+          "paginate": {
+            "first": "처음",
+            "last": "마지막",
+            "next": "다음",
+            "previous": "이전"
+          },
+          "zeroRecords": "데이터가 없습니다"
+        }, "retrieve": true,
+        "serverSide": true,
+        "processing": true,
+        "bSort": true,
+        "ajax": {
+          "url": "/alr20/admin/memberSearch",
+          "type": "POST",
+          "dataType": "json",
+          "contentType": "application/json; charset=utf-8",
+          "data":
+                  function (d) {
+                    return JSON.stringify($.extend( {} , d, addData));
+                  },
+          "dataFilter":
+                  function (response) {
+                    return response;
+                  }
+        },
+
+        columnDefs:[{
+          bSortable: false, targets: 'no-sort'
+        },{
+          visible: false, targets: 0
+        }],
+
+        "columns": [
+          {"data": "id"},
+          {"data": "memberRoleString"},
+          {"data": "memberRankString"},
+          {"data": "name"},
+          {"data": "group"},
+          {"data": "birthday"},
+          {"data": "phone",
+            "width": "15%"},
+          {"data": "mail"}
+        ],
+      });
+    });
+
+    $('#close').click(function(){
+      $('#team_member').DataTable().destroy();
+    });
+
+    $('#contestNumFilter').on( 'change', function() {
+      const value = $("#contestNumFilter option:selected").val();
+
+      addData.findBy = value;
+
+      table.ajax.reload();
+    });
+
+  });
+
+</script>
+
+<style>
+  .pagination {
+    justify-content : center !important;
+  }
+
+  #select {
+    float: right;
+    margin-left: 1rem;
+  }
+
+</style>

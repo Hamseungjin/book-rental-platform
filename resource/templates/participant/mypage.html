@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:include="common/include/include-meta"/>
+    <title>해커톤평가체계</title>
+    <th:block th:include="common/include/include-link"/>
+</head>
+<body>
+<header th:replace="common/layout/header"></header>
+<div class="content-container">
+    <div class="container pb-4">
+        <p class="location">
+            참가자
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-caret-right-fill" viewBox="0 0 16 16">
+                <path d="m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z"/>
+            </svg>
+            <span style="color: #004abf">마이페이지</span>
+        </p>
+        <div class="row mt-5 justify-content-center">
+            <div class="col-sm-12 col-md-6">
+<!--                <div class="d-block text-center fw-bold fs-4 mb-5">팀명 :&nbsp;<span class="fw-normal" th:text="${teamName}">팀명</span></div>-->
+                <hr class="basic-hr mb-5">
+                <form th:action="@{/logout}" type="POST">
+                    <input type="submit" class="d-block btn btn-lg btn-link mx-auto text-decoration-none" value="로그아웃">
+                </form>
+                <div class="row">
+                    <div class="col-md-4 col-sm-12">
+                        <button class="btn btn-success btn-lg w-auto shadow mt-5 mx-auto text-white d-block" onclick="location.href='/alr20/mypage/application'">지원서 조회</button>
+                    </div>
+                    <div class="col-md-4 col-sm-12">
+                        <button class="btn btn-warning btn-lg w-auto shadow mt-5 mx-auto text-white d-block" onclick="location.href='/alr20/mypage/application/edit'">지원서 수정</button>
+                    </div>
+                    <div class="col-md-4 col-sm-12">
+                        <button class="btn btn-primary btn-lg w-auto shadow mt-5 mx-auto text-white d-block" onclick="printApplication()">지원서 출력</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<th:block th:include="common/include/include-script"/>
+<script th:src="@{/js/mypage.js}"></script>
+</body>
+</html>

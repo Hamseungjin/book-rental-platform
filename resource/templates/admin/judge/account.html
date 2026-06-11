@@ -1,0 +1,471 @@
+<div th:replace="admin/sideNav.html"></div>
+
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>심사위원 계정관리</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a th:href="@{/admin/main}"><i class="bi bi-house-door"></i></a></li>
+        <li class="breadcrumb-item active">심사위원 계정관리</li>
+      </ol>
+    </nav>
+  </div><!-- End Page Title -->
+
+  <section class="section dashboard">
+    <div class="row">
+      <div class="card">
+        <div class="card-body" style="margin-top: 1.5rem;">
+          <table id="account" class="table table-hover text-break" style="width:100%">
+            <thead>
+              <tr>
+                <th>구분</th>
+                <th>분야</th>
+                <th>계급</th>
+                <th>이름</th>
+                <th>연락처</th>
+                <th>아이디</th>
+                <th>소속</th>
+                <th class="no-sort">비밀번호</th>
+              </tr>
+            </thead>
+          </table>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div th:replace="admin/judge/newJudge.html"></div>
+  <div th:replace="admin/judge/modifyJudge.html"></div>
+
+</main><!-- End #main -->
+
+<div th:replace="admin/footer.html"></div>
+
+<script th:inline="javascript">
+  $(document).ready(function() {
+
+    //findBySub 본선,예선 / findBy 분야
+    const addData = { findBy : "all", findBySub : "all" };
+
+    //btn-primary 적용
+    $.fn.dataTable.Buttons.defaults.dom.button.className = 'btn';
+
+    var table = $('#account').DataTable( {
+      dom: 'B<"#select"><"#selectRound">frtp',
+      "responsive": true,
+      "info": false,
+      "lengthMenu": false,
+      "lengthChange": false,
+      "language": {
+        "lengthMenu": "",
+        "search": "이름검색 :",
+        "info": "",
+        "paginate": {
+          "first": "처음",
+          "last": "마지막",
+          "next": "다음",
+          "previous": "이전"
+        },
+        "zeroRecords": "데이터가 없습니다"
+      },"pagingType": "full_numbers",
+      "searchDelay": 500,
+      "serverSide": true,
+      "processing": true,
+      "bSort": true,
+      "ajax": {
+        "url": "/alr20/admin/judgeStatus",
+        "type": "POST",
+        "dataType": "json",
+        "contentType": "application/json; charset=utf-8",
+        // 서버 전송 내용
+        "data":
+                function (d) {
+                  return JSON.stringify($.extend( {} , d, addData));
+                },
+        // 서버 응답
+        "dataFilter":
+                function (response) {
+                  return response;
+                }
+      },
+
+      "preDrawCallback": function(){
+        $('.btn-group').removeClass('btn-group');
+      },
+
+      "columns": [
+        {"data" : "contestRoundString",
+          "render" : $.fn.dataTable.render.text()},
+        {"data" : "contestFieldString",
+          "render" : $.fn.dataTable.render.text()},
+        {"data" : "rank",
+          "render" : $.fn.dataTable.render.text()},
+        {"data" : "name",
+          "render" : $.fn.dataTable.render.text()},
+        {"data" : "phone",
+          "render" : $.fn.dataTable.render.text()},
+        {"data" : "userId",
+          "render" : $.fn.dataTable.render.text()},
+        {"data" : "mainGroup",
+          "render" : $.fn.dataTable.render.text()},
+        {
+          "data": null,
+          "render": function(data, type, row){
+            return '<button type="button" class="btn btn-outline-danger"><i class="fa fa-unlock-alt"></i>비밀번호 초기화</button>';
+          },
+          "width": "18%"
+        }
+      ],
+
+      columnDefs:[{
+        bSortable: false, targets: 'no-sort'
+      }],
+
+      buttons: [
+        {
+          text: '<i class="fa fa-plus"></i>추가',
+          className: 'btn btn-primary',
+          attr: {
+            id : 'insert'
+          },
+          action: function () {
+            $('#bordered-new-judge').modal('show');
+          }
+        },
+        {
+          text: '<i class="fa fa-trash"></i>삭제',
+          className: 'btn btn-danger disabled',
+          attr: {
+            id : 'delete'
+          }
+        },
+        {
+          text: '<i class="fa fa-user-circle"></i>수정',
+          className: 'btn btn-warning disabled',
+          attr: {
+            id : 'modify'
+          }
+        }
+      ],
+
+    });
+
+    let addOption = "";
+
+    /*[# th:each="contestFieldType : ${contestFieldType}"]*/
+    addOption += "<option value = \"" + [[${contestFieldType.key}]] + "\" >" + [[${contestFieldType.value}]] + "</option>";
+    /*[/]*/
+
+    $("#select").html('<select id="contestFilter" class="form-select form-select-sm" >' +
+            '<option value="all">전체</option>' +
+            addOption +
+            '</select>');
+
+    $("#selectRound").html('<select id="roundFilter" class="form-select form-select-sm" >' +
+            '<option value="all">전체</option>' +
+            '<option value="PRELIMINARY">예선</option>' +
+            '<option value="MAIN">본선</option>' +
+            '</select>');
+
+    $('#contestRound').change(function(){
+      const contestRound = $('#contestRound option:selected').val();
+
+      if (contestRound === 'MAIN'){
+        $('#selectContestField').collapse('hide');
+        $('#selectMainPublic').collapse('show');
+      } else {
+        $('#selectContestField').collapse('show');
+        $('#selectMainPublic').collapse('hide');
+      }
+    });
+
+    //심사위원 계정 추가 시, 심사분야 구분 추가
+    $('#submit').click( function() {
+      const contestRound = $('#contestRound option:selected').val();
+      let contestField = $('#contestField option:selected').val();
+
+      if (contestRound === 'MAIN'){
+        const isPublic = $('#isPublic option:selected').val();
+
+        if(isPublic === "public"){
+          contestField = 'AIRSPACE';
+        } else {
+          contestField = 'DESIGNATED_1';
+        }
+      }
+
+      const name = $('#name').val();
+      const userId = $('#userId').val();
+      const rank = $('#rank').val();
+      const phone = $('#phone').val();
+      const mainGroup = $('#mainGroup').val();
+
+      let data = {
+        contestRound : contestRound,
+        contestField : contestField,
+        name : name,
+        userId : userId,
+        rank : rank,
+        phone : phone,
+        mainGroup : mainGroup
+      };
+
+      $.ajax({
+        url: '/alr20/admin/judgeRegister',
+        method: 'POST',
+        data: JSON.stringify(data),
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        success: function(res) {
+          alert(res.message);
+          table.ajax.reload();
+
+        },
+        error: function(res) {
+          alert(res.responseJSON.message);
+
+          $('#bordered-new-judge').modal('hide');
+        }
+      });
+
+      $('form').each(function() {
+        this.reset();
+      });
+
+
+      $('#bordered-new-judge').modal('hide');
+      table.ajax.reload();
+    });
+
+    $('#select').on( 'change', function() {
+      const value = $("#contestFilter option:selected").val();
+
+      addData.findBy = value;
+
+      table.ajax.reload();
+    });
+
+    $('#selectRound').on('change', function(){
+      const value = $("#roundFilter option:selected").val();
+
+      addData.findBySub = value;
+
+      table.ajax.reload();
+    });
+
+    $('#account tbody').on( 'click', 'tr', function() {
+
+      $(this).toggleClass('selected');
+
+      if ( $('#account tbody tr').hasClass('selected') ) {
+        $('#delete').removeClass("disabled");
+        $('#modify').removeClass("disabled");
+      }
+      else {
+        $('#delete').addClass("disabled");
+        $('#modify').addClass("disabled");
+      }
+    });
+
+    $('#delete').click( function() {
+
+      const result = confirm(table.rows('.selected').data().length + "개의 계정을 삭제하시겠습니까?");
+
+      let arr = [];
+      $.each(table.rows('.selected').data(), function() {
+        arr.push(this["userId"]);
+      });
+
+      const data = JSON.stringify({userId : arr});
+
+      if(result) {
+
+        $.ajax({
+          url: '/alr20/admin/judgeDelete',
+          method: 'POST',
+          data: data,
+          dataType: 'json',
+          contentType: 'application/json; charset=utf-8',
+          success: function(res) {
+            table.rows( '.selected' ).remove().draw(false);
+            alert(res.message)
+          },
+          error: function(res) {
+            alert(res.responseJSON.message);
+          }
+        });
+      } else {
+        $('#delete').addClass("disabled");
+        table.rows( '.selected' ).nodes().to$().removeClass( 'selected' );
+      }
+
+      $('#delete').addClass("disabled");
+      $('#modify').addClass("disabled");
+    });
+
+    $('#account tbody').on( 'click', 'button', function (e)  {
+
+      if (confirm("초기비밀번호(보안12!@)로 초기화됩니다")) {
+
+        const row = table.row( $(this).parents('tr') ).data();
+
+        const data = {userId : row['userId']};
+
+        $.ajax({
+          url: '/alr20/admin/judgePasswordInit',
+          method:'POST',
+          data: JSON.stringify(data),
+          dataType: 'json',
+          contentType: 'application/json; charset=utf-8',
+          success: function(res) {
+            alert(res.message);
+          },
+          error: function(res) {
+            alert(res.responseJSON.message);
+          }
+        });
+      }
+    });
+
+    $('#modify').click(function() {
+
+      const data = table.rows('.selected:first').data()[0];
+
+      $('#modifyContestRound').val(data["contestRound"]).prop("selected", true);
+      $('#modifyContestField').val(data["contestField"]).prop("selected", true);
+      $('#modifyName').attr('value', data["name"]);
+      $('#modifyUserId').attr('value', data["userId"]);
+      $('#modifyRank').attr('value', data["rank"]);
+      $('#modifyPhone').attr('value', data["phone"]);
+      $('#modifyMainGroup').attr('value', data["mainGroup"]);
+
+      if (data["contestRound"] === 'MAIN'){
+        $('#modifySelectContestField').collapse('hide');
+
+        if(data["contestField"] === 'AIRSPACE'){
+          $('#modifyMainPublic').val("public").prop("selected", true);
+        } else {
+          $('#modifyMainPublic').val("designated").prop("selected", true);
+        }
+
+        $('#modifySelectMainPublic').collapse('show');
+      } else {
+        $('#modifySelectContestField').collapse('show');
+        $('#modifySelectMainPublic').collapse('hide');
+      }
+
+      $('#bordered-modify-judge').modal('show');
+    });
+
+    //확인필요
+    $('#modifyContestRound').change(function(){
+      const contestRound = $('#modifyContestRound option:selected').val();
+
+      if (contestRound === 'MAIN'){
+        $('#modifySelectContestField').collapse('hide');
+      } else {
+        $('#modifySelectContestField').collapse('show');
+      }
+    });
+
+    $('#modifySubmit').click( function() {
+      const contestRound = $('#modifyContestRound option:selected').val();
+      let contestField = $('#modifyContestField option:selected').val();
+
+      if (contestRound === 'MAIN'){
+        const isPublic = $('#isPublic option:selected').val();
+
+        if(isPublic === "public"){
+          contestField = 'AIRSPACE';
+        } else {
+          contestField = 'DESIGNATED_1';
+        }
+      }
+
+      const name = $('#modifyName').val();
+      const userId = $('#modifyUserId').val();
+      const rank = $('#modifyRank').val();
+      const phone = $('#modifyPhone').val();
+      const mainGroup = $('#modifyMainGroup').val();
+
+      let data = {
+        contestRound : contestRound,
+        contestField : contestField,
+        name : name,
+        userId : userId,
+        rank : rank,
+        phone : phone,
+        mainGroup : mainGroup
+      };
+
+      $.ajax({
+        url: '/alr20/admin/judgeModify',
+        method: 'POST',
+        data: JSON.stringify(data),
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        success: function(res) {
+          alert(res.message);
+          table.ajax.reload();
+        },
+        error: function(res) {
+          alert(res.responseJSON.message);
+
+          $('#bordered-modify-judge').modal('hide');
+        }
+      });
+
+      $('form').each(function() {
+        this.reset();
+      });
+
+
+      $('#bordered-modify-judge').modal('hide');
+      $('#delete').addClass("disabled");
+      $('#modify').addClass("disabled");
+      table.ajax.reload();
+    });
+
+  } );
+
+  $(document).on("keyup", ".phoneNumber", function () {
+    $(this).val($(this).val().replace(/[^0-9]/g, "").replace(/(^02|^0505|^1[0-9]{3}|^0[0-9]{2})([0-9]+)?([0-9]{4})$/, "$1-$2-$3").replace("--", "-"));
+  });
+
+</script>
+
+<style>
+  .pagination {
+    justify-content : center !important;
+  }
+
+  #select {
+    float: right;
+    margin-left: 1rem;
+  }
+
+  #selectRound {
+    float: right;
+    margin-left: 1rem;
+  }
+
+  tr.selected td{
+    background-color: #a6c9ff;
+  }
+
+  tr > td:last-of-type {
+    text-align: center;
+  }
+
+  .btn-warning *{
+    color: #fff;
+  }
+
+  .btn-warning.disabled, .btn-warning:disabled {
+    background-color: #9d9c9c;
+    border-color: #9d9c9c;
+  }
+
+</style>

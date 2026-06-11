@@ -1,0 +1,470 @@
+<div th:replace="admin/sideNav.html"></div>
+
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>
+      <div th:text ="${contestNum}" class="contestNum"></div>회차 공군해커톤
+
+      <div class="contestButton">
+        <button type="button" class="btn btn-primary" id="contestRegister">회차등록</button>
+        <button type="button" class="btn btn-danger" id="contestEnd">회차마감</button>
+      </div>
+    </h1>
+  </div>
+
+  <section class="section dashboard">
+    <div class="row">
+
+      <div class="col-xxl-4 col-md-6">
+
+        <div class="card">
+
+          <div class="filter">
+            <a class="icon" id="APPLICATION_REGISTER"><i class="fas fa-ellipsis-h"></i></a>
+          </div>
+
+          <div class=" card-body">
+            <h5 class="card-title">지원서접수기간</h5>
+
+            <div class="d-flex align-items-center">
+              <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                <i class="bi bi-clipboard-check"></i>
+              </div>
+              <div class="ps-3">
+                <div class="timeInfo">
+                  <h6>시작: </h6><input type="datetime-local" class="form-control" th:value="${applicationRegisterStart}" disabled>
+                </div>
+                <div class="timeInfo">
+                  <h6>종료: </h6><input type="datetime-local" class="form-control" th:value="${applicationRegisterEnd}" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="col-xxl-4 col-md-6">
+        <div class="card">
+
+          <div class="filter">
+            <a class="icon" id="PRELIMINARY_EVALUATION"><i class="fas fa-ellipsis-h"></i></a>
+          </div>
+
+          <div class=" card-body">
+            <h5 class="card-title">예선심사기간</h5>
+            <div class="d-flex align-items-center">
+              <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                <i class="bi bi-graph-up-arrow"></i>
+              </div>
+              <div class="ps-3">
+                <div class="timeInfo">
+                  <h6>시작: </h6><input type="datetime-local" class="form-control" th:value="${qualifyEvaluationStart}" disabled>
+                </div>
+                <div class="timeInfo">
+                  <h6>종료: </h6><input type="datetime-local" class="form-control" th:value="${qualifyEvaluationEnd}" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-xxl-4 col-md-6">
+        <div class="card">
+
+          <div class="filter">
+            <a class="icon" id="MAIN_EVALUATION"><i class="fas fa-ellipsis-h"></i></a>
+          </div>
+
+          <div class="card-body">
+            <h5 class="card-title">본선심사기간</h5>
+
+            <div class="d-flex align-items-center">
+              <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                <i class="bi bi-trophy"></i>
+              </div>
+              <div class="ps-3">
+                <div class="timeInfo">
+                  <h6>시작: </h6><input type="datetime-local" class="form-control" th:value="${finalEvaluationStart}" disabled>
+                </div>
+                <div class="timeInfo">
+                  <h6>종료: </h6><input type="datetime-local" class="form-control" th:value="${finalEvaluationEnd}" disabled>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="row">
+      <div class="col-6">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">지원현황</h5>
+
+            <div class="flex align-items-center" id="table">
+
+              <table id="status" class="table table-hover table-bordered" style="width:100%; text-align:center;">
+                <thead class="table-dark">
+                  <tr>
+                    <th>분야</th>
+                    <th>현역지원팀</th>
+                    <th>민간인지원팀</th>
+                    <th>혼합지원팀</th>
+                    <th>전체지원자</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr th:each="list : ${applicationStatus}">
+                    <td><span th:text="${list.contestFieldString}"></span></td>
+                    <td><span th:text="${list.activeServiceTeamCount}+팀"></span></td>
+                    <td><span th:text="${list.nonActiveServiceTeamCount}+팀"></span></td>
+                    <td><span th:text="${list.mixActiveServiceTeamCount}+팀"></span></td>
+                    <td><span th:text="${list.memberCount}+명"></span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-6">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">현황조회</h5>
+            <div id="donutChart" style="min-height: 400px;" class="echart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div th:replace="admin/main/modifyDate.html"></div>
+
+<div th:replace="admin/main/register.html"></div>
+
+<div th:replace="admin/main/contestChange.html"></div>
+
+<div th:replace="admin/footer.html"></div>
+
+<script th:src="@{/js/admin/echarts.min.js}"></script>
+
+<script th:inline="javascript">
+  document.addEventListener("DOMContentLoaded", () => {
+
+    const AIRSPACE = [[${AIRSPACE}]];
+    const BASEPROTECTION = [[${BASEPROTECTION}]];
+    const OPERATIONSUPPORT = [[${OPERATIONSUPPORT}]];
+    const EDUCATIONTRAINNING = [[${EDUCATIONTRAINNING}]];
+    const MILITARYWELFARE = [[${MILITARYWELFARE}]];
+    const DESIGNATED_1 = [[${DESIGNATED_1}]];
+    const DESIGNATED_2 = [[${DESIGNATED_2}]];
+    const DESIGNATED_3 = [[${DESIGNATED_3}]];
+
+    // const DESIGNATED_4 = [[${DESIGNATED_4}]];
+    // const DESIGNATED_5 = [[${DESIGNATED_5}]];
+    // const DESIGNATED_6 = [[${DESIGNATED_6}]];
+    // const DESIGNATED_7 = [[${DESIGNATED_7}]];
+
+    const countData = [[${countData}]];
+
+    console.log(countData);
+
+    echarts.init(document.querySelector("#donutChart")).setOption({
+      tooltip: {
+        trigger: 'item',
+        formatter: function(params) {
+          let result = params.seriesName + "<br>" + params.marker + params.name + "  " + params.data['value']+"팀";
+
+          return result;
+        }
+      },
+      legend: {
+        top: '5%',
+        left: 'center'
+      },
+      series: [{
+        name: '지원분야',
+        type: 'pie',
+        radius: ['40%', '70%'],
+        avoidLabelOverlap: false,
+        label: {
+          show: false,
+          position: 'center'
+        },
+        emphasis: {
+          label: {
+            show: true,
+            fontSize: '18',
+            fontWeight: 'bold'
+          }
+        },
+        labelLine: {
+          show: false
+        },
+        data: countData
+      }]
+    });
+  });
+
+  $(document).ready(function() {
+
+    $('.delete').click(function(){
+      $('form').each(function() {
+        this.reset();
+      });
+
+      $("form select option").remove();
+
+    });
+
+    let modifyType = "";
+
+    $('.icon').click(function() {
+
+      modifyType = $(this).attr('id');
+
+      //날짜 체크 필요
+
+      switch(modifyType){
+        case "APPLICATION_REGISTER":
+          $("#bordered-modify-date h5").text("지원서접수기간변경");
+          $("label[id='start']").text("지원서접수 시작일");
+          $('#startDate').val([[${applicationRegisterStart}]].replace(/\s/g,'-').replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g,""));
+          $("label[id='end']").text("지원서접수 종료일");
+          $('#endDate').val([[${applicationRegisterEnd}]].replace(/\s/g,'-').replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g,""));
+          break
+        case "PRELIMINARY_EVALUATION":
+          $("#bordered-modify-date h5").text("예선심사기간변경");
+          $("label[id='start']").text("예선심사 시작일");
+          $('#startDate').val([[${qualifyEvaluationStart}]].replace(/\s/g,'-').replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g,""));
+          $("label[id='end']").text("예선심사 종료일");
+          $('#endDate').val([[${qualifyEvaluationEnd}]].replace(/\s/g,'-').replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g,""));
+          break
+        case "MAIN_EVALUATION":
+          $("#bordered-modify-date h5").text("본선심사기간변경");
+          $("label[id='start']").text("본선심사 시작일");
+          $('#startDate').val([[${finalEvaluationStart}]].replace(/\s/g,'-').replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g,""));
+          $("label[id='end']").text("본선심사 종료일");
+          $('#endDate').val([[${finalEvaluationEnd}]].replace(/\s/g,'-').replace(/[ㄱ-ㅎㅏ-ㅣ가-힣]/g,""));
+          break
+      }
+
+      $('#bordered-modify-date').modal('show');
+    });
+
+    $('#submit').click(function() {
+
+      const data = {
+        periodType : modifyType,
+        startDate : $('#startDate').val(),
+        endDate : $('#endDate').val()
+      };
+
+      console.log(data);
+
+      $.ajax({
+        url: '/alr20/admin/change/period',
+        method: 'POST',
+        data: JSON.stringify(data),
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        success: function(res) {
+          alert(res.message);
+          location.reload();
+          $('#bordered-modify-date').modal('hide');
+        },
+        error: function (res) {
+          alert(res.responseJSON.message);
+        }
+      });
+    });
+
+    $('#contestRegister').click(function() {
+
+      $('#contestNum').val([[${contestNum+1}]]);
+
+      $('#bordered-register').modal('show');
+    });
+
+    $('#register').click(function() {
+
+      const data = {
+        contestNum : $('#contestNum').val(),
+        applicationRegisterStart : $('#applicationRegisterStart').val(),
+        applicationRegisterEnd : $('#applicationRegisterEnd').val(),
+        preliminaryEvaluationStart : $('#preliminaryEvaluationStart').val(),
+        preliminaryEvaluationEnd : $('#preliminaryEvaluationEnd').val(),
+        mainEvaluationStart : $('#mainEvaluationStart').val(),
+        mainEvaluationEnd : $('#mainEvaluationEnd').val()
+      };
+
+      $.ajax({
+        url: '/alr20/admin/register/contest-info',
+        method: 'POST',
+        data: JSON.stringify(data),
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        success: function(res) {
+          alert(res.message);
+          $('#bordered-register').modal('hide');
+          location.reload();
+        },
+        error: function (res) {
+          alert(res.responseJSON.message);
+        }
+      });
+    });
+
+    $('#contestChange').click(function() {
+      const contestIsEmpty = [[${contestNumIsEmpty}]];
+      const contestNum = [[${contestNumInfo}]];
+      const currentNum = [[${contestNum}]];
+
+      if (!contestIsEmpty) {
+
+        let addOption = "";
+
+        for (const i of contestNum.values()) {
+          if (i === currentNum) {
+            addOption += "<option value = \"" + i + "\" selected>" + i + "회차" +"</option>";
+          } else {
+          addOption += "<option value = \"" + i + "\" >" + i + "회차" +"</option>";
+          }
+        }
+
+        $('#contestNumSelect').append(addOption);
+
+        $('#bordered-contest-change').modal('show');
+      } else {
+        alert("등록된 회차가 없습니다");
+        alert("신규 회차 등록으로 이동합니다");
+        $('#bordered-register').modal('show');
+      }
+    });
+
+
+    $('#change').click(function( ) {
+
+      const contestNum = $('#contestNumSelect option:selected').val();
+
+      if(confirm(contestNum+"회차로 변경합니다\n입력되는 정보는 새로운 회차에 등록됩니다")){
+
+        const data = {contestNum : contestNum};
+
+        $.ajax({
+          url: '/alr20/admin/contestChange',
+          method: 'POST',
+          data: JSON.stringify(data),
+          contentType: 'application/json; charset=utf-8',
+          success: function(res) {
+            alert(res.message);
+            location.reload();
+          },
+          error: function (res) {
+            alert(res.responseJSON.message);
+          }
+        })
+      } else {
+        $('#bordered-contest-change').modal('hide');
+      }
+    });
+
+    $('#contestEnd').click(function() {
+      const contestNum = [[${contestNum}]];
+
+      if(confirm(contestNum + "회차 해커톤을 마감하시겠습니까?\n수상자를 제외한 모든 팀, 심사위원, 평가표 등의 정보가 삭제됩니다.")){
+        $.ajax({
+          type: 'POST',
+          url: '/alr20/admin/contestEnd',
+          success: (res) => {
+            alert(res.message);
+          },
+          error: (res) => {
+            alert(res.responseJSON.message);
+          }
+        })
+      }
+
+    });
+
+  });
+</script>
+
+<style>
+  .btn-outline-success {
+    margin-right: 1rem;
+  }
+
+  .card {
+    box-shadow: 2px 1px 10px 0px rgba(1 ,41, 112, 0.12);
+  }
+
+  .pageTitle {
+    margin-bottom: 2rem;
+  }
+
+  .col-6 .card {
+    height: 100%;
+  }
+
+  #table {
+    margin-top: 5rem;
+  }
+
+  #excel {
+    float: right;
+  }
+
+  h1{
+    font-size: 35px;
+    margin-bottom: 2rem;
+  }
+
+  .card-title {
+    font-size: 25px;
+  }
+
+  .contestNum {
+    display: inline-block;
+  }
+
+  h6 > div {
+    display: inline;
+  }
+
+  .contestButton {
+    float:right;
+  }
+
+  .pagetitle {
+    margin-bottom: 1.5rem;
+  }
+
+  #donutChart {
+    text-align: -webkit-center;
+  }
+
+  .timeInfo{
+    display:flex;
+    flex-direction: row;
+    align-items:center;
+    margin: 0.5rem 0 0.5rem 1rem;
+  }
+
+  .timeInfo h6{
+    width:3rem;
+    margin-right:0.5rem;
+  }
+
+  .timeInfo input{
+    text-align:center;
+  }
+
+</style>

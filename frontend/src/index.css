@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply m-0 min-w-[320px] bg-slate-50 text-slate-900 antialiased; font-family: Inter, Pretendard, system-ui, sans-serif; }
+  button, input, select, textarea { font: inherit; }
+}
+@layer components {
+  .page-title { @apply text-2xl font-bold tracking-tight text-slate-950 md:text-3xl; }
+  .page-description { @apply mt-2 text-sm leading-6 text-slate-600; }
+  .table-wrap { @apply overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm; }
+}

@@ -1,0 +1,72 @@
+<div class="modal fade" id="bordered-register">
+  <div class="modal modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">신규회차등록</h5>
+      </div>
+
+      <div class="modal-body">
+
+        <form>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">회차번호</label>
+            <div class="col-sm-8">
+              <input type="number" class="form-control" id="contestNum" th:value="${contestNum}">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">지원서접수 시작일</label>
+            <div class="col-sm-8">
+              <input type="datetime-local" class="form-control" id="applicationRegisterStart">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">지원서접수 종료일</label>
+            <div class="col-sm-8">
+              <input type="datetime-local" class="form-control" id="applicationRegisterEnd">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">예선심사 시작일</label>
+            <div class="col-sm-8">
+              <input type="datetime-local" class="form-control" id="preliminaryEvaluationStart">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">예선심사 종료일</label>
+            <div class="col-sm-8">
+              <input type="datetime-local" class="form-control" id="preliminaryEvaluationEnd">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">본선심사 시작일</label>
+            <div class="col-sm-8">
+              <input type="datetime-local" class="form-control" id="mainEvaluationStart">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label" id="end">본선심사 종료일</label>
+            <div class="col-sm-8">
+              <input type="datetime-local" class="form-control" id="mainEvaluationEnd">
+            </div>
+          </div>
+
+        </form>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary delete" data-bs-dismiss="modal">닫기</button>
+          <button type="button" class="btn btn-primary" id="register">등록</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+

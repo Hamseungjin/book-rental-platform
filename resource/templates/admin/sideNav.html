@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="keyword" content="해커톤 평가체계, 공군해커톤">
+    <meta name="description" content="해커톤 평가체계">
+    <meta name="author" content="mil.af">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>해커톤평가체계</title>
+
+    <!-- Vendor CSS Files -->
+    <link th:href="@{/webjars/bootstrap\5.0.2\css\bootstrap.min.css}" rel="stylesheet">
+<!--    <link th:href="@{/webjars/bootstrap-icons/1.7.0/font/bootstrap-icons.css}" rel="stylesheet">-->
+    <link th:href="@{/webjars/font-awesome/5.12.0/css/fontawesome.min.css}" rel="stylesheet">
+
+    <!-- Template Main CSS File -->
+    <link th:href="@{/css/admin/main.css}" rel="stylesheet">
+
+    <!-- DataTable css -->
+  <link rel="stylesheet" type="text/css" th:href="@{/css/admin/datatables.min.css}"/>
+    <!--  <link rel="stylesheet" href="https://cdn.datatables.net/1.11.3/css/dataTables.bootstrap5.min.css">-->
+
+  </head>
+
+  <style>
+    form button {
+      background-color: #ffffff00;
+      border: none;
+      color: #13161c;
+      font-size: 16px;
+    }
+  </style>
+
+<body>
+
+  <!-- ======= Header ======= -->
+  <header id="header" class="header fixed-top d-flex align-items-center">
+
+    <div class="d-flex align-items-center justify-content-between">
+      <i class="bi bi-list toggle-sidebar-btn"></i>
+      <a th:href="@{/admin/main}" class="logo d-flex align-items-center">
+        <img id="logo-icon" th:src="@{/img/header-icon.png}" alt="header-icon">
+        <span class="d-none d-lg-block">해커톤 관리자페이지</span>
+      </a>
+    </div>
+    <!-- End Logo -->
+
+    <form th:action="@{/admin/logout}" type="POST" id="logoutButton">
+      <button type="submit" class="bi bi-box-arrow-right fa-2x">
+        <i class="fas fa-sign-out-alt"></i> 로그아웃
+      </button>
+    </form>
+
+  </header><!-- End Header -->
+
+  <!-- ======= Sidebar ======= -->
+  <aside id="sidebar" class="sidebar">
+
+    <ul class="sidebar-nav" id="sidebar-nav">
+
+      <!--   메인화면   -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" th:href="@{/admin/main}">
+          <i class="bi bi-house"></i>
+          <span>메인화면</span>
+        </a>
+      </li>
+
+      <!-- 평가관리 -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" th:href="@{/admin/evaluation/scoreStatus}">
+          <i class="bi bi-pencil-square"></i>
+          <span>평가관리</span>
+        </a>
+      </li>
+
+      <!--   평가표 작성   -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" data-bs-target="#standard-nav" data-bs-toggle="collapse" th:href="@{#}" aria-expanded="false">
+          <i class="bi bi-file-bar-graph"></i><span>평가표작성</span><i class="bi bi-chevron-down ms-auto"></i>
+        </a>
+        <ul id="standard-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav" style="">
+          <li>
+            <a th:href="@{/admin/evaluation/standard/qualify/AIRSPACE}">
+              <i class="bi bi-circle"></i><span>예선평가표</span>
+            </a>
+          </li>
+          <li>
+            <a th:href="@{/admin/evaluation/standard/final/public}">
+              <i class="bi bi-circle"></i><span>본선평가표</span>
+            </a>
+          </li>
+        </ul>
+      </li>
+
+      <!-- 접수현황 조회 -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" th:href="@{/admin/application/status}">
+          <i class="bi bi-archive"></i>
+          <span>접수현황</span>
+        </a>
+      </li>
+
+      <!-- 심사위원 아이디 관리 -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" th:href="@{/admin/account}">
+          <i class="bi bi-person-square"></i>
+          <span>심사위원 계정관리</span>
+        </a>
+      </li>
+
+      <!-- 관리자 계정 관리 -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" th:href="@{/admin/managerAccount}">
+          <i class="bi bi-person-square"></i>
+          <span>관리자 계정관리</span>
+        </a>
+      </li>
+
+      <!-- 수상자현황 -->
+      <li class="nav-item">
+        <a class="nav-link collapsed" th:href="@{/admin/prize}">
+          <i class="bi bi-trophy"></i>
+          <span>수상자현황</span>
+        </a>
+      </li>
+    </ul>
+
+  </aside><!-- End Sidebar-->
+
+  <!-- bootstrap JS-->
+  <script th:src="@{/webjars/bootstrap/5.0.2/js/bootstrap.bundle.js}"></script>
+  <script th:src="@{/js/admin/main.js}"></script>
+  <script type="text/javascript" th:src="@{/webjars/font-awesome/5.12.0/js/all.js}"></script>
+
+  <!-- DataTable JS-->
+  <script th:src="@{/webjars/jquery/3.5.1/jquery.min.js}"></script>
+
+
+  <script type="text/javascript" th:src="@{/js/admin/pdfmake.min.js}"></script>
+  <script type="text/javascript" th:src="@{/js/admin/vfs_fonts.js}"></script>
+  <script type="text/javascript" th:src="@{/js/admin/datatables.min.js}"></script>
+  <script th:src="@{/js/admin/dataTables.bootstrap5.min.js}"></script>
+</body>
+
+<style>
+  #logoutButton {
+    margin-block-end: inherit;
+    flex:auto;
+    flex-direction:row;
+  }
+
+  #logoutButton button {
+    margin-right: 1rem;
+    float: right;
+  }
+
+  .toggle-sidebar-btn {
+    margin-right: 0.5rem;
+  }
+
+  .btn-warning {
+    color: #fff !important;
+  }
+
+  .btn-warning *{
+    color: #fff;
+  }
+
+</style>

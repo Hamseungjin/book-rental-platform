@@ -1,0 +1,52 @@
+<div class="modal fade" id="bordered-delete-eval-item">
+  <div class="modal modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">삭제</h5>
+        <div class="col-sm-3">
+          <div class="form-check form-switch">
+            <form>
+              <input class="form-check-input collapsed" type="checkbox" data-bs-toggle="collapse" data-bs-target="#collapseIndicator" aria-expanded="false" aria-controls="collapseIndicator" id="deleteCheckbox">
+              <label class="form-check-label" for="deleteIndicator">평가지표삭제</label>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-body">
+
+        <form>
+
+          <div class="row mb-3">
+            <label class="col-sm-4 col-form-label">평가항목</label>
+            <div class="col-sm-8">
+              <select class="form-select" id="deleteItem">
+                <option th:each="list : ${itemList}" th:value="${list}" th:text="${list}"></option>
+              </select>
+            </div>
+          </div>
+
+          <div id="collapseIndicator" class="collapse">
+            <div class="row mb-3">
+              <label class="col-sm-4 col-form-label">평가지표</label>
+              <div class="col-sm-8">
+                <select class="form-select" id="deleteIndicator">
+                  <option th:if="${isQualify} == true" th:each="list : ${qualify}" th:value="${list.description}" th:text="${list.description}"></option>
+                  <option th:unless="${isQualify} == true" th:each="list : ${final}" th:value="${list.description}" th:text="${list.description}"></option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+        </form>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary resetData" data-bs-dismiss="modal" id="reset">닫기</button>
+          <button type="button" class="btn btn-primary" id="deleteSubmit">저장</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

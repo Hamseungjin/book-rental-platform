@@ -1,0 +1,12 @@
+import { useQuery } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { lenderApi } from '../api/endpoints'
+import { getApiError } from '../api/client'
+import { RequireRole } from '../components/RequireRole'
+import { PageHeader } from '../components/PageHeader'
+import { Badge } from '../components/ui/Badge'
+import { Button } from '../components/ui/Button'
+import { EmptyState, ErrorAlert, LoadingState } from '../components/ui/Feedback'
+import { useAuth } from '../features/auth/AuthContext'
+export function LenderBooksPage(){const {userId,hasRole}=useAuth();const q=useQuery({queryKey:['lender-books',userId],queryFn:lenderApi.books,enabled:hasRole('LENDER')});return <RequireRole role="LENDER"><PageHeader title="내 책 관리" description="등록한 책의 승인 및 재고 상태를 확인하세요." action={<Link to="/lender/books/new"><Button><Plus className="mr-2 h-4 w-4"/>책 등록</Button></Link>}/>{q.isLoading?<LoadingState/>:q.isError?<ErrorAlert message={getApiError(q.error)}/>:!q.data?.length?<EmptyState title="등록한 책이 없습니다."/>:<div className="table-wrap"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-4">책</th><th className="p-4">형태</th><th className="p-4">수량</th><th className="p-4">상태</th><th className="p-4">관리</th></tr></thead><tbody className="divide-y">{q.data.map(b=><tr key={b.id}><td className="p-4"><strong>{b.title}</strong><div className="mt-1 text-xs text-slate-500">{b.author} · {b.category}</div>{b.rejectionMemo&&<div className="mt-1 text-xs text-rose-600">거절 사유: {b.rejectionMemo}</div>}</td><td className="p-4"><Badge value={b.format}/></td><td className="p-4">{b.availableQuantity}/{b.totalQuantity}</td><td className="p-4"><Badge value={b.status}/></td><td className="p-4">{['PENDING','REJECTED'].includes(b.status)?<Link className="font-semibold text-brand-700" to={`/lender/books/${b.id}/edit`}>수정</Link>:<span className="text-xs text-slate-400">수정 불가</span>}</td></tr>)}</tbody></table></div>}</RequireRole>}

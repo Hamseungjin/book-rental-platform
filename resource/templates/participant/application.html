@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <th:block th:include="common/include/include-meta"/>
+<!--  <th:block th:include="/common/include/csrf"/>-->
+  <title>해커톤평가체계</title>
+  <th:block th:include="common/include/include-link"/>
+  <link rel="stylesheet" th:href="@{/css/participant/application.css}">
+</head>
+<body>
+  <header th:replace="common/layout/header"></header>
+  <div th:replace="common/loading"></div>
+  <div class="mypage-padding-container">
+    <div class="container pb-4 mt-5">
+      <p class="location">
+        참가자
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-caret-right-fill" viewBox="0 0 16 16">
+          <path d="m12.14 8.753-5.482 4.796c-.646.566-1.658.106-1.658-.753V3.204a1 1 0 0 1 1.659-.753l5.48 4.796a1 1 0 0 1 0 1.506z"/>
+        </svg>
+        <span style="color: #004abf">최초접수</span>
+      </p>
+      <div class="row mt-4">
+        <div class="col-6 px-md-5 d-flex align-items-center">
+          <div aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+              <li class="breadcrumb-item"><a th:href="@{/}" class="text-decoration-none">로그인</a></li>
+              <li class="breadcrumb-item active" aria-current="page">최초접수</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+      <form id="application-form" class="needs-validation">
+        <!--    이름 & 비밀번호 등 선택 section    -->
+        <div th:replace="participant/application/layout/basicInfo"></div>
+        <!--  팀원정보 입력 섹션    -->
+        <div th:replace="participant/application/layout/teamInfo"></div>
+        <!--  신청서 섹션  -->
+        <div th:replace="participant/application/layout/applicationInfo"></div>
+      </form>
+    </div>
+  </div>
+  <footer th:replace="common/layout/footer"></footer>
+  <th:block th:include="common/include/include-script"/>
+  <script th:src="@{/js/application.js}"></script>
+  <script th:src="@{/js/application-validation.js}"></script>
+  <script th:src="@{/js/application-duplicate.js}"></script>
+  <script th:inline="javascript">
+    $(document).ready(function(){
+      $('[data-toggle="tooltip"]').tooltip();
+      $('#contest-field').on("change", function(){
+
+        const text = $("option:selected", this).text();
+        const data = text.substring(text.indexOf(' ') + 1);
+
+        $(this).tooltip('hide');
+
+        if(data.length > 0) {
+          $(this).attr('data-bs-original-title', data);
+          $('#sample-summary-file').attr('href', "/alr20/application/file/designated-idea-summary-file");
+          $('#sample-idea-file').attr('href', "/alr20/application/file/designated-idea-plan-file");
+        } else {
+          $('#sample-summary-file').attr('href', "/alr20/application/file/idea-summary-file");
+          $('#sample-idea-file').attr('href', "/alr20/application/file/idea-plan-file");
+        }
+
+        $(this).tooltip('show');
+
+      });
+    });
+  </script>
+  <style>
+    .tooltip-inner {
+      max-width: 400px;
+    }
+  </style>
+</body>
+</html>

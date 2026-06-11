@@ -1,0 +1,252 @@
+<!--     팀원정보       -->
+<div class="tab-pane fade" id="bordered-team">
+
+        <table id="member_edit" class="table table-hover" style="width:100%">
+                <thead>
+                        <tr>
+                                <th class="no-sort">ID</th>
+                                <th class="no-sort">직급</th>
+                                <th class="no-sort">신분</th>
+                                <th class="no-sort">상세신분</th>
+                                <th class="no-sort">이름</th>
+                                <th class="no-sort">소속</th>
+                                <th class="no-sort">세부소속</th>
+                                <th class="no-sort">생년월일</th>
+                                <th class="no-sort">휴대전화</th>
+                                <th class="no-sort">이메일</th>
+                        </tr>
+                </thead>
+        </table>
+</div>
+
+<!-- 팀원 정보 수정 -->
+<div th:replace="admin/application/status/memberModify.html"></div>
+
+
+<script th:inline="javascript">
+
+        $(document).ready(function() {
+
+                let teamName = [[${teamName}]];
+                const addData = { findBy : teamName };
+
+                //btn-primary 적용
+                $.fn.dataTable.Buttons.defaults.dom.button.className = 'btn';
+
+                var table = $('#member_edit').DataTable({
+                        dom: 'tB',
+                        "fnDrawCallback" : function(oSettings) {
+                                $('.dataTables_paginate').hide();
+                        },
+                        "autoWidth": false,
+                        "select" : {
+                                style: 'single'
+                        },
+                        "searching": false,
+                        "info": false,
+                        "lengthMenu": false,
+                        "lengthChange": false,
+                        "language": {
+                                "lengthMenu": "",
+                                "search": "검색 :",
+                                "info": "",
+                                "paginate": {
+                                        "first": "처음",
+                                        "last": "마지막",
+                                        "next": "다음",
+                                        "previous": "이전"
+                                },
+                        },
+                        "serverSide": true,
+                        "processing": true,
+                        "bSort": true,
+                        "ajax": {
+                                "url": "/alr20/admin/memberSearch",
+                                "type": "POST",
+                                "dataType": "json",
+                                "contentType": "application/json; charset=utf-8",
+                                // 서버 전송 내용
+                                "data":
+                                        function (d) {
+                                                return JSON.stringify($.extend( {} , d, addData));
+                                        },
+                                // 서버 응답
+                                "dataFilter":
+                                        function (response) {
+                                                return response;
+                                        }
+                        },
+
+                        "columns": [
+                                {"data": "id",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "memberRoleString", "width": "10%",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "memberRankString", "width": "10%",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "memberRankName",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "name", "width": "10%",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "group",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "birthday",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "phone", "width": "14%",
+                                        "render" : $.fn.dataTable.render.text()},
+                                {"data": "mail", "width": "14%",
+                                        "render" : $.fn.dataTable.render.text()}
+                        ],
+
+                        columnDefs:[{
+                                bSortable: false, targets: 'no-sort',
+                        }
+                        ,{
+                                visible: false, targets: 0
+                        }
+                        ],
+
+                        buttons: [
+                                {
+                                        text: '<i class="fa fa-user-circle"></i>수정',
+                                        className: 'btn btn-warning disabled',
+                                        attr: {
+                                                id : 'modify'
+                                        },
+                                        action: function () {
+                                                $('#bordered-modify-member').modal('show');
+                                        }
+                                }
+                        ],
+
+                        // btn-group 클래스 삭제
+                        initComplete: function () {
+                                var btns = $('.btn-group');
+                                btns.removeClass('btn-group');
+                        },
+                });
+
+                $('#member_edit tbody').on( 'click', 'tr', function() {
+
+                        $(this).toggleClass('selected');
+
+                        if ( $('#member_edit tbody tr').hasClass('selected') ) {
+                                $('#modify').removeClass("disabled");
+                        }
+                        else {
+                                $('#modify').addClass("disabled");
+                        }
+                });
+
+                $('#modify').click(function(e) {
+                        e.preventDefault();
+                        const data = table.row('.selected').data();
+                        const memberMinCount = 1;
+                        const isOneMember = Boolean(table.rows().data().length == memberMinCount);
+
+                        if (isOneMember) {
+                                $('select[id=memberRole]').attr('disabled', true);
+                        }
+
+                        for (const key in data) {
+                                const tagName = $('#' + key).prop("tagName");
+                                if (tagName == 'SELECT') {
+                                        $('select[id='+ key +'] > option[value ='+ data[key] + ']').attr('selected', true);
+                                } else if (tagName =='INPUT') {
+                                        $('input[id='+ key +']').attr('value', data[key]);
+                                } else {
+                                }
+                        }
+                });
+
+                $('#reset').click( function() {
+                        const isExist = Boolean($('form').has('#newLeader').length > 0);
+
+                        if (isExist) {
+                                $('div').remove('#newLeader');
+                        }
+
+                        $('form').each( function() {
+                                this.reset();
+                        });
+                });
+
+                $('#submit').click( function() {
+                        const id = table.row('.selected').data()['id'];
+                        const name = $('#name').val();
+                        const memberRank = $('#memberRank option:selected').val();
+                        const memberRole = $('#memberRole option:selected').val();
+                        const birthday = $('#birthday').val();
+                        const phone = $('#phone').val();
+                        const mail = $('#mail').val();
+                        const mainGroup = $('#group').val();
+                        const isLeaderChange = false;
+                        const newLeader = "";
+
+                        let data = {
+                                id : id,
+                                name : name,
+                                memberRank : memberRank,
+                                memberRole : memberRole,
+                                birthday : birthday,
+                                phone : phone,
+                                mail : mail,
+                                mainGroup : mainGroup,
+                                isLeaderChange : isLeaderChange,
+                                newLeader : newLeader
+                        };
+
+                        if ($('#newLeader').length) {
+                                const addData = { newLeader : $('#newLeader option:selected').val(), isLeaderChange: true};
+
+                                data = $.extend( {} , data, addData);
+                        }
+
+                        $.ajax({
+                                url: '/alr20/admin/memberEdit',
+                                method: 'POST',
+                                data: JSON.stringify(data),
+                                dataType: 'json',
+                                contentType: 'application/json; charset=utf-8',
+                                success: function(res) {
+                                        alert(res.message);
+                                        $('#bordered-modify-member').modal('hide');
+                                        $('#member').DataTable().ajax.reload();
+                                        $('#member_edit').DataTable().ajax.reload();
+                                },
+                                error: function(res) {
+                                        alert(res.responseJSON.message);
+                                }
+                        });
+                });
+        });
+
+        $(document).on("keyup", ".phoneNumber", function () {
+                $(this).val($(this).val().replace(/[^0-9]/g, "").replace(/(^02|^0505|^1[0-9]{3}|^0[0-9]{2})([0-9]+)?([0-9]{4})$/, "$1-$2-$3").replace("--", "-"));
+        });
+
+</script>
+
+<style>
+        .tab-content {
+                margin-top: 1rem;
+        }
+
+        .dt-buttons {
+                float: right !important;
+        }
+
+        tr.selected td{
+                background-color: #a6c9ff;
+        }
+
+        .btn-warning *{
+                color: #fff;
+        }
+
+        .btn-warning.disabled, .btn-warning:disabled {
+                background-color: #9d9c9c;
+                border-color: #9d9c9c;
+        }
+
+</style>

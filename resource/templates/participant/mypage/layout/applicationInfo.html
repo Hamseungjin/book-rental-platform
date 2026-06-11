@@ -1,0 +1,68 @@
+<div class="row mt-5 justify-content-center">
+  <div class="col-sm-12 col-md-12 px-md-5">
+    <div class="container py-4">
+      <!--   주의사항   -->
+      <div class="row py-4 border">
+        <div class="col-sm-12 py-1">※ 어떤 이유를 불문하고 가명, 차명을 통한 신청 불가하며, 참가권 양도 또한 불가능</div>
+        <div class="col-sm-12 py-1">※ 가명, 차명 참가권 양도 등의 사실이 밝혀질 경우 불이익을 당할 수 있음</div>
+        <div class="col-sm-12 py-1">※ 멘토링은 팀원 일부 참가 가능하며, 본선은 팀 전원 참석(필수)</div>
+      </div>
+      <!--   인지 경로   -->
+      <div class="row py-4 border">
+        <div class="col-sm-12 col-md-3 border-end d-flex align-items-center justify-content-center">
+          <p class="h5 fw-bold text-center">인지 경로<span class="text-danger">*</span></p>
+        </div>
+        <div class="col-sm-12 col-md-9">
+          <div class="position-relative row">
+            <div class="col-sm-12 col-md-12">
+              <span class="lh-base d-md-inline-block me-2" th:each="recognitionPath : ${applicationForm.getSurveyInfo().getRecognitionPathList()}" th:text="${recognitionPath}"
+                    th:if="${recognitionPath} != '기타'">
+              </span>
+              <span class="lh-base d-md-inline-block me-2" th:each="recognitionPath : ${applicationForm.getSurveyInfo().getRecognitionPathList()}"
+                    th:text="|${recognitionPath}(${applicationForm.getSurveyInfo().getEtcDescription()})|"
+                    th:if="${recognitionPath} == '기타'">
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!--   제출    -->
+      <div class="row py-4 border">
+        <p class="h5 text-center common-line-height">
+          상기 작성 내용은 사실과 다름이 없으며,<br>
+          참가 안내서의 내용 및 유의사항을 충분히 숙지하였습니다.<br>
+          본인은 제 <span th:text="${currentContestNum}">0</span>회 공군 『창의·혁신 아이디어 공모』 해커톤에<br>
+          참여하기 위하여 신청서를 제출합니다.
+        </p>
+        <p class="h4 text-center common-line-height fw-bold mb-0" th:text="${#calendars.format(#calendars.createNow(), 'yyyy년 MM월 dd일')}">20XX년 X월 X일</p>
+        <p class="h4 text-center common-line-height fw-bold">공군 참모총장 귀하</p>
+      </div>
+      <!--  동의서, 기획서 등    -->
+      <div class="row py-4 border">
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">개인정보제공동의서(mypage)<span class="text-danger">*</span></label>
+          <a th:href="@{/mypage/application/personal-info-file}" class="d-block text-decoration-none"
+             th:text="${personalInfoFileName}" target="_blank">개인정보제공동의서.pdf</a>
+        </div>
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">저작권동의서<span class="text-danger">*</span></label>
+          <a th:href="@{/mypage/application/copyright-file}" class="d-block text-decoration-none"
+             th:text="${copyrightFileName}" target="_blank">저작권동의서.pdf</a>
+        </div>
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">아이디어 기획서<span class="text-danger">*</span></label>
+          <a th:href="@{/mypage/application/idea-plan-file}" class="d-block text-decoration-none"
+             th:text="${ideaPlanFileName}" target="_blank">아이디어기획서.pdf</a>
+        </div>
+        <div class="position-relative col-sm-12 col-md-3 py-2">
+          <label class="form-label border-bottom pb-2">아이디어 요약서<span class="text-danger">*</span></label>
+          <a th:href="@{/mypage/application/idea-summary-file}" class="d-block text-decoration-none"
+             th:text="${ideaSummaryFileName}" target="_blank">아이디어요약서.pdf</a>
+        </div>
+        <div class="col-sm-12 col-md-12 pt-3 pb-2 text-center">
+          * 용량제한 : 각 파일당 5MB * 확장자 : PDF
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

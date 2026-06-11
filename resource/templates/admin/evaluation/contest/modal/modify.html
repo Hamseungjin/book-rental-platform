@@ -1,0 +1,85 @@
+<div class="modal fade" id="bordered-modify-eval-item">
+    <div class="modal modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">수정</h5>
+                <div class="col-sm-3">
+                    <div class="form-check form-switch">
+                        <form>
+                            <input class="form-check-input collapsed" type="checkbox" data-bs-toggle="collapse" data-bs-target="#collapseIndicator" aria-expanded="false" aria-controls="collapseIndicator" id="modifyCheckbox">
+                            <label class="form-check-label" for="modifyIndicator">평가지표수정</label>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-body">
+
+                <form>
+                    <div class="row mb-3">
+                        <label class="col-sm-2 col-form-label">평가항목</label>
+                        <div class="col-sm-10">
+                            <select class="form-select" id="modifyItem">
+                                <option th:each="list : ${itemList}" th:value="${list}" th:text="${list}"></option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="item row mb-3 collapse show">
+                        <label class="col-sm-2 col-form-label">평가항목수정</label>
+                        <div class="col-sm-10">
+                            <input type="text" class="form-control" id="newItem">
+                        </div>
+                    </div>
+
+                    <div id="indicatorss" class="collapse">
+
+                        <div class="row mb-3">
+                            <label class="col-sm-2 col-form-label">평가지표</label>
+                            <div class="col-sm-10">
+                                <select class="form-select" id="modifyIndicator">
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <label class="col-sm-2 col-form-label">평가지표수정</label>
+                            <div class="col-sm-10">
+                                <input type="text" class="form-control" id="newIndicator">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <label class="col-sm-2 col-form-label">총점</label>
+                            <div class="col-sm-10">
+                                <input type="number" class="form-control" id="newPoint">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <label class="col-sm-2 col-form-label">편차</label>
+                            <div class="col-sm-10">
+                                <input type="number" class="form-control" id="newDifferentialPoint">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <label class="col-sm-2 col-form-label">단계</label>
+                            <div class="col-sm-10">
+                                <input type="number" class="form-control" id="newGrade">
+                            </div>
+                        </div>
+                    </div>
+
+                </form>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary resetData" data-bs-dismiss="modal" id="reset">닫기</button>
+                    <button type="button" class="btn btn-primary" id="modifySubmit">저장</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

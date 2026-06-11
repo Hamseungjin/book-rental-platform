@@ -1,0 +1,64 @@
+<div class="row mt-5 justify-content-center">
+  <div class="col-sm-12 col-md-12 px-md-5">
+    <label class="mb-3 form-label-font">팀원정보</label>
+    <div class="table-responsive">
+      <table id="team-table" class="table table-responsive table-bordered">
+        <thead class="table-light">
+        <tr>
+          <th scope="col" class="team-th-seq">순번</th>
+          <th scope="col" class="team-th-rank">구분</th>
+          <th scope="col" class="team-th-rank-name">계급/직급</th>
+          <th scope="col" class="team-th-name">성명</th>
+          <th scope="col" class="team-th-birthday">생년월일</th>
+          <th scope="col" class="team-th-phone">전화번호</th>
+          <th scope="col" class="team-th-mail">메일</th>
+          <th scope="col" class="team-th-main-group">소속1</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="memberInfo, i : ${applicationForm.getTeamInfo().getMemberInfoList()}">
+          <th th:id="'member-sequence-' + ${i.index+1}" th:name="'member-sequence-' + ${i.index+1}" th:value="${i.index+1}" scope="row">
+            <!--              <span th:text="${i.index+1}"></span>-->
+
+            <span class="fw-bold text-primary" th:if="${i.index+1 == 1}">팀장</span>
+            <span class="fw-bold" th:unless="${i.index+1 == 1}">팀원</span>
+
+          </th>
+          <td>
+            <div th:id="'member-rank-' + ${i.index+1}" th:name="'member-rank-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getRank()}"></div>
+          </td>
+          <td>
+            <div th:id="'member-rank-name-' + ${i.index+1}" th:name="'member-rank-name-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getRankName()}"></div>
+          </td>
+          <td>
+            <div th:id="'member-name-' + ${i.index+1}" th:name="'member-name-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getName()}"></div>
+          </td>
+          <td>
+            <div th:id="'member-birthday-' + ${i.index+1}" th:name="'member-birthday-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getBirthday()}"></div>
+          </td>
+          <td>
+            <div th:id="'member-phone-' + ${i.index+1}" th:name="'member-phone-' + ${i.index+1} " class=""
+                 th:text="${memberInfo.getPhone()}"></div>
+          </td>
+          <td>
+            <div th:id="'member-mail-' + ${i.index+1}" th:name="'member-mail-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getMail()}"></div>
+          </td>
+          <td>
+            <div th:id="'member-main-group-' + ${i.index+1}" th:name="'member-main-group-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getMainGroup()}"></div>
+          </td>
+<!--          <td>
+            <div th:id="'member-sub-group-' + ${i.index+1}" th:name="'member-sub-group-' + ${i.index+1}" class=""
+                 th:text="${memberInfo.getSubGroup()}"></div>
+          </td>-->
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

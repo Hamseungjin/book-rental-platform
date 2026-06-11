@@ -1,0 +1,108 @@
+<div class="modal fade" id="bordered-insert-eval-item">
+  <div class="modal modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">평가항목추가</h5>
+        <div class="col-sm-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" data-bs-toggle="collapse" data-bs-target=".multiple-collapse" aria-expanded="false" aria-controls="addAll exceptItem" id="addCheckbox">
+            <label class="form-check-label">평가지표추가</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <form>
+          <div class="collapse show multiple-collapse" id="addAll">
+              <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">평가항목</label>
+                <div class="col-sm-10">
+                  <input type="text" class="form-control" id="name">
+                </div>
+              </div>
+
+              <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">평가지표</label>
+                <div class="col-sm-10">
+                  <input type="text" class="form-control" id="description">
+                </div>
+              </div>
+
+              <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">총점</label>
+                <div class="col-sm-10">
+                  <input type="number" class="form-control" id="point">
+                </div>
+              </div>
+
+              <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">편차</label>
+                <div class="col-sm-10">
+                  <input type="number" class="form-control" id="differentialPoint">
+                </div>
+              </div>
+
+              <div class="row mb-3">
+                <label class="col-sm-2 col-form-label">단계</label>
+                <div class="col-sm-10">
+                  <input type="number" class="form-control" id="grade">
+                </div>
+              </div>
+          </div>
+
+          <div class="collapse multiple-collapse" id="exceptItem">
+            <div class="row mb-3">
+              <label class="col-sm-2 col-form-label">평가항목</label>
+              <div class="col-sm-10">
+                <select class="form-select" id="item">
+                  <option th:each="list : ${itemList}" th:value="${list}" th:text="${list}"></option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <label class="col-sm-2 col-form-label">평가지표</label>
+              <div class="col-sm-10">
+                <input type="text" class="form-control" id="addDescription">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <label class="col-sm-2 col-form-label">총점</label>
+              <div class="col-sm-10">
+                <input type="number" class="form-control" id="addPoint">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <label class="col-sm-2 col-form-label">편차</label>
+              <div class="col-sm-10">
+                <input type="number" class="form-control" id="addDifferentialPoint">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <label class="col-sm-2 col-form-label">단계</label>
+              <div class="col-sm-10">
+                <input type="number" class="form-control" id="addGrade">
+              </div>
+            </div>
+          </div>
+
+        </form>
+
+        <div class="modal-footer">
+            <select class="form-select" style="width:fit-content" id="unionContestField">
+              <option th:each="data : ${contestFieldType}" th:value="${data.key}" th:text="${data.value}"></option>
+            </select>
+            <button type="button" class="btn btn-light" id="union" style="margin-right:auto"><i class="fa fa-paste"></i>불러오기</button>
+          <button type="button" class="btn btn-secondary resetData" data-bs-dismiss="modal" id="reset">닫기</button>
+          <button type="button" class="btn btn-primary" id="addSubmit">저장</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+

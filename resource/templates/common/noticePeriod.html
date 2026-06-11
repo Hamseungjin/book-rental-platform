@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <th:block th:include="/common/include/include-meta"/>
+    <title>해커톤평가체계</title>
+    <th:block th:include="/common/include/include-link"/>
+</head>
+<body>
+<div class="w-100 h-100 d-flex flex-column align-items-center justify-content-center px-4">
+    <h1 class="fs-1">NOTICE</h1>
+    <p class="mt-5 fw-bold" th:text="${description}"></p>
+    <p class="mt-3 fw-bold" th:text="${period}"></p>
+    <p class="mt-3 fw-bold" th:text="${preliminaryPeriod}"></p>
+    <p class="mt-3 fw-bold" th:text="${mainPeriod}"></p>
+    <a href="https://rokaf.airforce.mil.kr/sites/hackathon/index.do" class="mt-5 text-dark text-decoration-none border border-4 py-3 px-4 border-dark fw-bold mb-4">공군해커톤으로</a>
+</div>
+<th:block th:include="/common/include/include-script"/>
+</body>
+</html>
