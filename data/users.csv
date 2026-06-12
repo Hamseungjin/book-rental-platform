@@ -1,4 +1,1 @@
-id,name,email,roles,active,created_at,updated_at
-1,관리자,admin@bookbridge.local,ADMIN,true,2026-06-12T00:00:00+00:00,2026-06-12T00:00:00+00:00
-2,책 등록자,lender@bookbridge.local,LENDER,true,2026-06-12T00:00:00+00:00,2026-06-12T00:00:00+00:00
-3,대여자,borrower@bookbridge.local,BORROWER,true,2026-06-12T00:00:00+00:00,2026-06-12T00:00:00+00:00
+id,name,military_id,password_hash,role,active,created_at,updated_at
