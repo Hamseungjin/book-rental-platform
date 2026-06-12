@@ -1,0 +1,3 @@
+.bookbridge.lock
+uploads/*
+!uploads/.gitkeep

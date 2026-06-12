@@ -1,3 +1,0 @@
-import { statusLabel } from '../../utils/status'
-const colors: Record<string, string> = { APPROVED: 'bg-emerald-100 text-emerald-700', RETURNED: 'bg-emerald-100 text-emerald-700', PENDING: 'bg-amber-100 text-amber-700', REQUESTED: 'bg-blue-100 text-blue-700', REJECTED: 'bg-rose-100 text-rose-700', OVERDUE: 'bg-rose-100 text-rose-700', LOANED: 'bg-indigo-100 text-indigo-700', PDF: 'bg-violet-100 text-violet-700', PHYSICAL_BOOK: 'bg-slate-100 text-slate-700', INACTIVE: 'bg-slate-200 text-slate-600', DELETED: 'bg-slate-200 text-slate-600' }
-export function Badge({ value }: { value: string }) { return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${colors[value] ?? 'bg-slate-100 text-slate-700'}`}>{statusLabel[value] ?? value}</span> }
