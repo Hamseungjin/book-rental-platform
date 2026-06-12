@@ -1,5 +1,0 @@
-import { AlertCircle, Inbox, LoaderCircle } from 'lucide-react'
-export function LoadingState({ label = '데이터를 불러오는 중입니다.' }: { label?: string }) { return <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-slate-500"><LoaderCircle className="h-5 w-5 animate-spin" />{label}</div> }
-export function EmptyState({ title = '표시할 데이터가 없습니다.', description }: { title?: string; description?: string }) { return <div className="flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center"><Inbox className="mb-3 h-8 w-8 text-slate-400"/><p className="font-medium">{title}</p>{description && <p className="mt-1 text-sm text-slate-500">{description}</p>}</div> }
-export function ErrorAlert({ message }: { message: string }) { return <div className="flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"><AlertCircle className="h-5 w-5 shrink-0"/><span>{message}</span></div> }
-export function SuccessAlert({ message }: { message: string }) { return <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div> }

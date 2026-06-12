@@ -1,1 +1,0 @@
-export const statusLabel: Record<string, string> = { PENDING: '승인 대기', APPROVED: '승인됨', REJECTED: '거절됨', INACTIVE: '비활성', DELETED: '삭제됨', REQUESTED: '요청됨', CANCELED: '취소됨', EXPIRED: '만료됨', LOANED: '대출 중', RETURNED: '반납 완료', OVERDUE: '연체', LOST: '분실', PHYSICAL_BOOK: '실물책', PDF: 'PDF' }
