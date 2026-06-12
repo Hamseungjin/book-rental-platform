@@ -4,9 +4,14 @@
 
 - `app.py`: Streamlit UI, `st.session_state` 로그인 세션, 로그인 상태와 역할별 메뉴 구성
 - `book_rental/auth.py`: 무작위 salt와 PBKDF2-SHA256을 사용하는 비밀번호 해시/검증
+- `book_rental/config.py`: 앱, 관리자 CLI, 기본 `CsvStore`가 공유하는 데이터 디렉터리 결정
 - `book_rental/service.py`: 회원가입·로그인, `USER`/`ADMIN` 권한, 도서·대여 업무 규칙, PDF 접근 제어
 - `book_rental/store.py`: CSV 스키마, 레거시 사용자 CSV 마이그레이션, 프로세스 잠금, 원자적 교체와 트랜잭션 복원
 - `book_rental/admin_command_runner.py`: 일반 회원가입과 분리된 관리자 계정 생성 진입점
+
+## 데이터 디렉터리
+
+모든 실행 진입점은 `get_data_dir()`를 사용합니다. `BOOKBRIDGE_DATA_DIR`가 있으면 해당 경로를 절대 경로로 정규화하고, 없으면 프로세스의 현재 작업 디렉터리가 아니라 소스 프로젝트 루트의 `data/`를 사용합니다. 따라서 Streamlit 서비스와 관리자 생성 명령에 동일한 환경변수를 설정하면 같은 `users.csv`를 읽고 씁니다. 관리자 대시보드는 현재 경로를 화면에 표시합니다.
 
 ## 인증과 역할
 

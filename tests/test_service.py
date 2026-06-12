@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 
 import pytest
 
+from book_rental.admin_command_runner import resolve_data_dir
 from book_rental.auth import verify_password
+from book_rental.config import DEFAULT_DATA_DIR, get_data_dir
 from book_rental.errors import AuthorizationError, NotFoundError, ValidationError
 from book_rental.service import BookRentalService
 from book_rental.store import CsvStore
@@ -47,6 +49,8 @@ def test_registration_succeeds_and_password_is_hashed(tmp_path):
     stored = service.store.read("users")[0]
 
     assert user["role"] == "USER"
+    assert user["active"] == "true"
+    assert user["created_at"] == user["updated_at"] == NOW.isoformat(timespec="seconds")
     assert stored["password_hash"] != "safe-pass"
     assert verify_password("safe-pass", stored["password_hash"])
 
@@ -59,20 +63,27 @@ def test_duplicate_military_id_registration_fails(service):
 def test_password_confirmation_mismatch_fails(tmp_path):
     service = BookRentalService(CsvStore(tmp_path / "data"), clock=lambda: NOW)
 
-    with pytest.raises(ValidationError, match="일치하지 않습니다"):
+    with pytest.raises(ValidationError, match="비밀번호가 일치하지 않습니다"):
         service.register_user("김병장", "24-00000001", "password1", "password2")
 
 
 def test_login_succeeds_without_exposing_password_hash(service):
-    user = service.authenticate("25-12345678", "member1234")
+    result = service.authenticate("25-12345678", "member1234")
 
-    assert user["name"] == "홍승진"
-    assert "password_hash" not in user
+    assert result["name"] == "홍승진"
+    assert "password_hash" not in result
 
 
-def test_login_with_wrong_password_fails(service):
-    with pytest.raises(ValidationError, match="올바르지 않습니다"):
-        service.authenticate("25-12345678", "wrong-password")
+def test_login_with_wrong_password_fails_without_exception(service):
+    result = service.authenticate("25-12345678", "wrong-password")
+
+    assert result.error == "INVALID_PASSWORD"
+
+
+def test_login_with_unknown_military_id_fails_without_exception(service):
+    result = service.authenticate("not-a-member", "member1234")
+
+    assert result.error == "ACCOUNT_NOT_FOUND"
 
 
 def test_regular_user_cannot_access_admin_features(service):
@@ -223,3 +234,27 @@ def test_overdue_status_is_synchronized_when_loans_are_read(tmp_path):
     current_time[0] = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
 
     assert service.loans(service.member_id)[0]["status"] == "OVERDUE"
+
+
+def test_app_store_and_admin_runner_share_environment_data_dir(tmp_path, monkeypatch):
+    configured = tmp_path / "shared-data"
+    monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(configured))
+
+    assert get_data_dir() == configured.resolve()
+    assert CsvStore().data_dir == configured.resolve()
+    assert resolve_data_dir() == configured.resolve()
+
+
+def test_default_data_dir_is_project_root_data(monkeypatch):
+    monkeypatch.delenv("BOOKBRIDGE_DATA_DIR", raising=False)
+
+    assert get_data_dir() == DEFAULT_DATA_DIR.resolve()
+    assert resolve_data_dir() == DEFAULT_DATA_DIR.resolve()
+
+
+def test_admin_runner_data_dir_argument_overrides_environment(tmp_path, monkeypatch):
+    environment_dir = tmp_path / "environment-data"
+    command_dir = tmp_path / "command-data"
+    monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(environment_dir))
+
+    assert resolve_data_dir(str(command_dir)) == command_dir.resolve()

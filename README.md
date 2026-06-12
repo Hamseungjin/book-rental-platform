@@ -26,11 +26,28 @@ streamlit run app.py
 
 브라우저에서 `http://localhost:8501`을 엽니다. 최초 실행 시 데모 사용자는 자동 생성되지 않습니다. 아래 명령으로 관리자 계정을 먼저 생성하거나 초기 화면에서 일반 회원가입을 진행하세요.
 
-다른 데이터 디렉터리를 사용하려면 다음과 같이 지정합니다.
+### 데이터 디렉터리 설정
+
+앱, `CsvStore()` 기본 생성자, 관리자 생성 명령은 모두 `book_rental/config.py`의 동일한 경로 결정 함수를 사용합니다.
+
+1. `BOOKBRIDGE_DATA_DIR`가 설정되어 있으면 해당 절대 경로를 사용합니다.
+2. 설정되어 있지 않으면 현재 실행 디렉터리와 무관하게 **프로젝트 루트의 `data/`**를 사용합니다.
+
+배포 서버에서는 두 CSV 위치가 다시 나뉘지 않도록 한 경로를 명시적으로 선택해 Streamlit 서비스와 관리자 명령에 동일하게 설정해야 합니다. 예를 들어 앱 내부 데이터를 기준으로 통일하려면 다음과 같이 설정합니다.
 
 ```bash
-BOOKBRIDGE_DATA_DIR=/path/to/data streamlit run app.py
+export BOOKBRIDGE_DATA_DIR=/opt/bookbridge/app/data
+streamlit run /opt/bookbridge/app/app.py
 ```
+
+루트 데이터 디렉터리를 운영 기준으로 삼으려면 두 명령 모두 `/opt/bookbridge/data`를 사용합니다.
+
+```bash
+export BOOKBRIDGE_DATA_DIR=/opt/bookbridge/data
+streamlit run /opt/bookbridge/app/app.py
+```
+
+현재 사용 중인 절대 경로는 애플리케이션 시작 로그와 관리자 대시보드 상단에서 확인할 수 있습니다.
 
 ## 관리자 계정 생성
 
@@ -53,8 +70,9 @@ python -m book_rental.admin_command_runner create-admin \
 export BOOKBRIDGE_ADMIN_ID=admin
 export BOOKBRIDGE_ADMIN_PASSWORD='안전한-비밀번호'
 export BOOKBRIDGE_ADMIN_NAME=관리자
-# 선택 사항: export BOOKBRIDGE_DATA_DIR=/path/to/data
-python -m book_rental.admin_command_runner create-admin
+export BOOKBRIDGE_DATA_DIR=/opt/bookbridge/app/data
+cd /opt/bookbridge/app
+python3 -m book_rental.admin_command_runner create-admin
 ```
 
 운영 환경에서는 셸 히스토리에 비밀번호가 남지 않도록 환경변수 또는 별도의 비밀 관리 도구 사용을 권장합니다.
@@ -71,7 +89,7 @@ python -m book_rental.admin_command_runner create-admin
 
 ## CSV 데이터와 마이그레이션
 
-기본 데이터 디렉터리는 `data/`이며 아래 파일이 테이블 역할을 합니다.
+기본 데이터 디렉터리는 프로젝트 루트의 `data/`입니다. 운영 환경에서는 `BOOKBRIDGE_DATA_DIR`로 앱과 관리자 CLI가 사용할 하나의 절대 경로를 지정하는 것을 권장합니다. 아래 파일이 테이블 역할을 합니다.
 
 - `users.csv`: `id,name,military_id,password_hash,role,active,created_at,updated_at`
 - `books.csv`
@@ -107,6 +125,7 @@ pytest -q
 ```text
 app.py                                  # Streamlit 인증 화면, 역할별 메뉴와 사용자 액션
 book_rental/auth.py                     # 비밀번호 해시 생성과 검증
+book_rental/config.py                   # 앱·CLI·Store 공통 데이터 경로 결정
 book_rental/admin_command_runner.py     # 별도 관리자 생성 CLI
 book_rental/service.py                  # 인증, 권한 및 대여 비즈니스 규칙
 book_rental/store.py                    # CSV 스키마 마이그레이션, 잠금, 원자적 저장

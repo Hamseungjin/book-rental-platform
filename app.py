@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
+import logging
 
 import pandas as pd
 import streamlit as st
 
+from book_rental.config import get_data_dir
 from book_rental.errors import BookRentalError
 from book_rental.service import BookRentalService
 from book_rental.store import CsvStore
 
 st.set_page_config(page_title="BookBridge", page_icon="📚", layout="wide")
 
-DATA_DIR = Path(os.environ.get("BOOKBRIDGE_DATA_DIR", "data"))
+LOGGER = logging.getLogger("bookbridge")
+DATA_DIR = get_data_dir()
+LOGGER.info("BookBridge data directory: %s", DATA_DIR)
 service = BookRentalService(CsvStore(DATA_DIR))
 
 
@@ -23,6 +25,9 @@ def run(action, success: str) -> None:
         st.rerun()
     except BookRentalError as error:
         st.error(str(error))
+    except Exception:
+        LOGGER.exception("BookBridge action failed")
+        st.error("요청 처리 중 오류가 발생했습니다.")
 
 
 def show_table(rows: list[dict[str, str]], columns: list[str] | None = None) -> None:
@@ -41,6 +46,7 @@ def go_to(page: str) -> None:
 
 
 if flash := st.session_state.pop("flash", None):
+    st.toast(flash)
     st.success(flash)
 
 actor = st.session_state.get("user")
@@ -111,12 +117,23 @@ elif page == "로그인":
         submitted = st.form_submit_button("로그인", type="primary")
     if submitted:
         try:
-            st.session_state.user = service.authenticate(military_id, password)
-            st.session_state.flash = "로그인했습니다."
-            go_to("책 둘러보기")
-            st.rerun()
-        except BookRentalError as error:
-            st.error(str(error))
+            result = service.authenticate(military_id, password)
+            if isinstance(result, dict):
+                st.session_state.user = result
+                st.session_state.flash = "로그인되었습니다."
+                go_to("책 둘러보기")
+                st.rerun()
+            elif result.error == "ACCOUNT_NOT_FOUND":
+                st.toast("존재하지 않는 계정입니다.")
+                st.error("존재하지 않는 계정입니다.")
+            elif result.error == "INVALID_PASSWORD":
+                st.toast("비밀번호가 틀렸습니다.")
+                st.error("비밀번호가 틀렸습니다.")
+            else:
+                st.error("비활성화된 계정입니다. 관리자에게 문의해주세요.")
+        except Exception:
+            LOGGER.exception("Login failed unexpectedly")
+            st.error("로그인 처리 중 오류가 발생했습니다.")
 
 elif page == "회원가입":
     st.title("회원가입")
@@ -129,11 +146,15 @@ elif page == "회원가입":
     if submitted:
         try:
             service.register_user(name, military_id, password, password_confirmation)
-            st.session_state.flash = "회원가입이 완료되었습니다. 로그인해 주세요."
+            st.toast("회원가입이 완료되었습니다.")
+            st.session_state.flash = "회원가입이 완료되었습니다. 로그인해주세요."
             go_to("로그인")
             st.rerun()
         except BookRentalError as error:
             st.error(str(error))
+        except Exception:
+            LOGGER.exception("Registration failed unexpectedly")
+            st.error("회원가입 처리 중 오류가 발생했습니다.")
 
 elif not actor:
     st.warning("로그인 후 이용할 수 있는 메뉴입니다.")
@@ -189,6 +210,7 @@ elif page == "내 등록 도서":
 
 elif page == "관리자 대시보드":
     st.title("관리자 대시보드")
+    st.caption(f"현재 데이터 디렉터리: {DATA_DIR}")
     metrics = service.dashboard(actor_id)
     for start in range(0, len(metrics), 3):
         columns = st.columns(3)

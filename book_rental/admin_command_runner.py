@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
+from .config import get_data_dir
 from .errors import BookRentalError
 from .service import BookRentalService
 from .store import CsvStore
@@ -16,8 +17,14 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--military-id", default=os.environ.get("BOOKBRIDGE_ADMIN_ID"))
     create.add_argument("--password", default=os.environ.get("BOOKBRIDGE_ADMIN_PASSWORD"))
     create.add_argument("--name", default=os.environ.get("BOOKBRIDGE_ADMIN_NAME", "관리자"))
-    create.add_argument("--data-dir", default=os.environ.get("BOOKBRIDGE_DATA_DIR", "data"))
+    create.add_argument("--data-dir", help="BOOKBRIDGE_DATA_DIR보다 우선하는 데이터 디렉터리")
     return parser
+
+
+def resolve_data_dir(command_line_value: str | None = None) -> Path:
+    if command_line_value:
+        return Path(command_line_value).expanduser().resolve()
+    return get_data_dir()
 
 
 def main() -> int:
@@ -29,7 +36,9 @@ def main() -> int:
     if not args.military_id or not args.password or not args.name:
         parser.error("군번, 비밀번호, 이름을 인자 또는 환경변수로 입력해 주세요.")
     try:
-        service = BookRentalService(CsvStore(Path(args.data_dir)))
+        data_dir = resolve_data_dir(args.data_dir)
+        print(f"사용 데이터 디렉터리: {data_dir}")
+        service = BookRentalService(CsvStore(data_dir))
         user, created = service.create_admin(args.name, args.military_id, args.password)
     except BookRentalError as error:
         print(f"관리자 생성 실패: {error}")

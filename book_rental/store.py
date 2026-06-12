@@ -10,6 +10,8 @@ from typing import Iterator
 
 import fcntl
 
+from .config import get_data_dir
+
 SCHEMAS: dict[str, list[str]] = {
     "users": [
         "id", "name", "military_id", "password_hash", "role", "active",
@@ -35,8 +37,8 @@ SCHEMAS: dict[str, list[str]] = {
 class CsvStore:
     """Small CSV data store with schema migration, locking, and atomic replacement."""
 
-    def __init__(self, data_dir: str | Path = "data") -> None:
-        self.data_dir = Path(data_dir)
+    def __init__(self, data_dir: str | Path | None = None) -> None:
+        self.data_dir = Path(data_dir).expanduser().resolve() if data_dir is not None else get_data_dir()
         self.upload_dir = self.data_dir / "uploads"
         self.lock_path = self.data_dir / ".bookbridge.lock"
         self.initialize()
@@ -62,11 +64,15 @@ class CsvStore:
         if table == "users":
             for row in rows:
                 legacy_roles = set(filter(None, row.get("roles", "").split("|")))
-                if not row.get("role"):
-                    row["role"] = "ADMIN" if "ADMIN" in legacy_roles else "USER"
-                row.setdefault("military_id", "")
-                row.setdefault("password_hash", "")
-                row.setdefault("active", "true")
+                role = row.get("role", "").upper()
+                if role not in {"ADMIN", "USER"}:
+                    role = "ADMIN" if "ADMIN" in legacy_roles else "USER"
+                row["role"] = role
+                row["military_id"] = row.get("military_id", "")
+                row["password_hash"] = row.get("password_hash", "")
+                row["active"] = row.get("active") or "true"
+                row["created_at"] = row.get("created_at", "")
+                row["updated_at"] = row.get("updated_at", "")
         self._write_file(path, fields, rows)
 
     def path(self, table: str) -> Path:

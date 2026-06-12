@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
@@ -10,6 +11,11 @@ from .errors import AuthorizationError, NotFoundError, ValidationError
 from .store import CsvStore
 
 Clock = Callable[[], datetime]
+
+
+@dataclass(frozen=True)
+class AuthenticationFailure:
+    error: str
 
 
 def utc_now() -> datetime:
@@ -63,7 +69,7 @@ class BookRentalService:
         if not name or not military_id:
             raise ValidationError("이름과 군번을 입력해 주세요.")
         if password != password_confirmation:
-            raise ValidationError("비밀번호와 비밀번호 확인이 일치하지 않습니다.")
+            raise ValidationError("비밀번호가 일치하지 않습니다.")
         if len(password) < 8:
             raise ValidationError("비밀번호는 8자 이상이어야 합니다.")
         with self.store.transaction():
@@ -80,14 +86,22 @@ class BookRentalService:
             self.store.write("users", users)
             return user
 
-    def authenticate(self, military_id: str, password: str) -> dict[str, str]:
+    def authenticate(self, military_id: str, password: str) -> dict[str, str] | AuthenticationFailure:
+        """Authenticate without raising for expected credential failures."""
         military_id = military_id.strip()
         user = next(
-            (row for row in self.store.read("users") if row["military_id"].casefold() == military_id.casefold()),
+            (
+                row for row in self.store.read("users")
+                if row.get("military_id", "").casefold() == military_id.casefold()
+            ),
             None,
         )
-        if not user or user["active"].lower() != "true" or not verify_password(password, user["password_hash"]):
-            raise ValidationError("군번 또는 비밀번호가 올바르지 않습니다.")
+        if user is None:
+            return AuthenticationFailure(error="ACCOUNT_NOT_FOUND")
+        if user.get("active", "").lower() != "true":
+            return AuthenticationFailure(error="ACCOUNT_INACTIVE")
+        if not verify_password(password, user.get("password_hash", "")):
+            return AuthenticationFailure(error="INVALID_PASSWORD")
         return {key: value for key, value in user.items() if key != "password_hash"}
 
     def approved_books(self) -> list[dict[str, str]]:
