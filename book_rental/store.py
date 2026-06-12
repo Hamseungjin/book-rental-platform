@@ -11,7 +11,10 @@ from typing import Iterator
 import fcntl
 
 SCHEMAS: dict[str, list[str]] = {
-    "users": ["id", "name", "email", "roles", "active", "created_at", "updated_at"],
+    "users": [
+        "id", "name", "military_id", "password_hash", "role", "active",
+        "created_at", "updated_at",
+    ],
     "books": [
         "id", "lender_id", "title", "author", "category", "description", "format",
         "total_quantity", "available_quantity", "default_loan_days", "status",
@@ -28,15 +31,9 @@ SCHEMAS: dict[str, list[str]] = {
     "admin_logs": ["id", "admin_id", "action", "target_type", "target_id", "memo", "created_at"],
 }
 
-SEED_USERS = [
-    {"id": "1", "name": "관리자", "email": "admin@bookbridge.local", "roles": "ADMIN", "active": "true"},
-    {"id": "2", "name": "책 등록자", "email": "lender@bookbridge.local", "roles": "LENDER", "active": "true"},
-    {"id": "3", "name": "대여자", "email": "borrower@bookbridge.local", "roles": "BORROWER", "active": "true"},
-]
-
 
 class CsvStore:
-    """Small CSV data store with process locking and atomic file replacement."""
+    """Small CSV data store with schema migration, locking, and atomic replacement."""
 
     def __init__(self, data_dir: str | Path = "data") -> None:
         self.data_dir = Path(data_dir)
@@ -51,8 +48,26 @@ class CsvStore:
         for table, fields in SCHEMAS.items():
             path = self.path(table)
             if not path.exists():
-                rows = SEED_USERS if table == "users" else []
-                self._write_file(path, fields, rows)
+                self._write_file(path, fields, [])
+            else:
+                self._migrate_file(table, path, fields)
+
+    def _migrate_file(self, table: str, path: Path, fields: list[str]) -> None:
+        with path.open(encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file)
+            old_fields = reader.fieldnames or []
+            rows = list(reader)
+        if old_fields == fields:
+            return
+        if table == "users":
+            for row in rows:
+                legacy_roles = set(filter(None, row.get("roles", "").split("|")))
+                if not row.get("role"):
+                    row["role"] = "ADMIN" if "ADMIN" in legacy_roles else "USER"
+                row.setdefault("military_id", "")
+                row.setdefault("password_hash", "")
+                row.setdefault("active", "true")
+        self._write_file(path, fields, rows)
 
     def path(self, table: str) -> Path:
         if table not in SCHEMAS:
