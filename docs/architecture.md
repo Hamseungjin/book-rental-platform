@@ -1,68 +1,46 @@
-# BookBridge Streamlit + CSV 아키텍처
+# BookBridge 아키텍처
 
-## 1. 전환 범위
+## 구성
 
-기존 구조의 Spring Boot REST API, JPA/MySQL, React SPA를 제거하고 Streamlit 단일 프로세스로 통합했다. 기존 핵심 흐름인 책 등록과 승인, 대여 요청과 승인, 재고 차감, 반납과 재고 복구, 연체, 관리자 집계를 유지한다.
+- `app.py`: Streamlit UI, `st.session_state` 로그인 세션, 로그인 상태와 역할별 메뉴 구성
+- `book_rental/auth.py`: 무작위 salt와 PBKDF2-SHA256을 사용하는 비밀번호 해시/검증
+- `book_rental/config.py`: 앱, 관리자 CLI, 기본 `CsvStore`가 공유하는 데이터 디렉터리 결정
+- `book_rental/service.py`: 회원가입·로그인, `USER`/`ADMIN` 권한, 도서·대여 업무 규칙, PDF 접근 제어
+- `book_rental/store.py`: CSV 스키마, 레거시 사용자 CSV 마이그레이션, 프로세스 잠금, 원자적 교체와 트랜잭션 복원
+- `book_rental/admin_command_runner.py`: 일반 회원가입과 분리된 관리자 계정 생성 진입점
 
-```mermaid
-flowchart LR
-    U[브라우저] --> S[Streamlit app.py]
-    S --> V[BookRentalService]
-    V --> C[CsvStore]
-    C --> F[(CSV files)]
-    C --> P[(PDF uploads)]
-```
+## 데이터 디렉터리
 
-## 2. 계층
+모든 실행 진입점은 `get_data_dir()`를 사용합니다. `BOOKBRIDGE_DATA_DIR`가 있으면 해당 경로를 절대 경로로 정규화하고, 없으면 프로세스의 현재 작업 디렉터리가 아니라 소스 프로젝트 루트의 `data/`를 사용합니다. 따라서 Streamlit 서비스와 관리자 생성 명령에 동일한 환경변수를 설정하면 같은 `users.csv`를 읽고 씁니다. 관리자 대시보드는 현재 경로를 화면에 표시합니다.
 
-### UI (`app.py`)
+## 인증과 역할
 
-Streamlit 사이드바에서 현재 사용자를 선택하고 역할에 맞는 메뉴를 노출한다. 화면은 서비스 메서드만 호출하며 CSV를 직접 수정하지 않는다.
+`users.csv`는 `id`, `name`, `military_id`, `password_hash`, `role`, `active`, 생성/수정 시각을 저장합니다. 군번은 대소문자를 구분하지 않는 고유 로그인 ID로 검증합니다. 비밀번호 원문은 저장하지 않습니다.
 
-### 서비스 (`book_rental/service.py`)
+역할은 두 종류입니다.
 
-다음 도메인 규칙을 담당한다.
+- `USER`: 도서 등록자와 대여자 기능을 모두 사용
+- `ADMIN`: 승인, 전체 현황, 사용자 관리 기능 사용
 
-- 역할과 활성 사용자 확인
-- 책/PDF 입력 검증
-- 승인 대기 책의 승인과 거절
-- 승인된 책에 대한 대여 요청
-- 승인 시점 재고 재검사, 재고 차감, 대출 생성
-- 반납 권한 확인, 재고 복구
-- 대출 기한을 기준으로 연체 동기화
-- 관리자 집계와 감사 로그
+Streamlit 메뉴 숨김은 사용성을 위한 1차 제어이며, 실제 권한은 모든 보호 서비스 메서드의 `require_role` 호출에서 다시 검증합니다.
 
-### 저장소 (`book_rental/store.py`)
+## CSV 마이그레이션
 
-CSV 헤더를 스키마로 관리하고 UTF-8로 읽고 쓴다. 변경 작업은 `fcntl` 배타 잠금으로 직렬화한다. 각 파일은 같은 디렉터리의 임시 파일에 기록하고 `os.replace`로 교체한다. 여러 파일 변경 중 예외가 발생하면 모든 CSV를 트랜잭션 전 백업으로 되돌린다.
+저장소 초기화 시 각 CSV 헤더를 현재 스키마와 비교합니다. 레거시 `users.csv`는 행과 ID를 보존하면서 다음과 같이 변환합니다.
 
-## 3. CSV 모델
+- `roles`에 `ADMIN` 포함: `role=ADMIN`
+- 그 외 기존 사용자: `role=USER`
+- 누락된 `military_id`, `password_hash`: 빈 값
 
-```mermaid
-erDiagram
-    USERS ||--o{ BOOKS : registers
-    USERS ||--o{ BORROW_REQUESTS : requests
-    BOOKS ||--o{ BORROW_REQUESTS : requested_for
-    BORROW_REQUESTS ||--o| LOANS : creates
-    USERS ||--o{ LOANS : borrows
-    BOOKS ||--o{ LOANS : loaned_as
-    USERS ||--o{ ADMIN_LOGS : records
-```
+레거시 계정은 인증 정보가 없으므로 자동 로그인 자격을 부여하지 않습니다. 데모 사용자는 더 이상 새 저장소에 시드되지 않습니다.
 
-- `users.csv`: 사용자와 `|`로 구분한 복수 역할
-- `books.csv`: 책, 수량, 승인 상태, PDF 경로
-- `borrow_requests.csv`: 대여 요청과 처리 상태
-- `loans.csv`: 승인된 요청의 대출, 기한, 반납 상태
-- `admin_logs.csv`: 도서/대여 승인 및 거절 감사 기록
+## PDF 접근 제어
 
-## 4. 상태 흐름
+PDF 다운로드는 대출 ID를 기준으로 서버 측에서 다음 조건을 모두 확인합니다.
 
-- 책: `PENDING` → `APPROVED` 또는 `REJECTED`
-- 대여 요청: `REQUESTED` → `APPROVED` 또는 `REJECTED`
-- 대출: `LOANED` → `OVERDUE` → `RETURNED`, 또는 `LOANED` → `RETURNED`
+1. 요청자가 해당 대출의 실제 대여자이거나 관리자일 것
+2. 대출 상태가 `LOANED` 또는 `OVERDUE`일 것
+3. 책 형식이 `PDF`일 것
+4. CSV에 저장된 업로드 경로의 파일이 실제로 존재할 것
 
-대여 요청을 생성할 때 가용 수량을 빠르게 확인하지만 재고를 예약하지 않는다. 관리자가 승인할 때 잠금 안에서 수량을 다시 검사하고, 책/요청/대출 CSV를 함께 갱신한다. 따라서 앞선 요청이 재고를 소진하면 뒤 요청은 승인되지 않고 `REQUESTED` 상태를 유지한다.
-
-## 5. 운영 한계
-
-CSV는 별도 DB 서버가 필요 없고 백업과 확인이 쉽지만, 대규모 동시 쓰기, 복수 애플리케이션 서버, 복잡한 질의에는 적합하지 않다. 현재 잠금은 같은 파일시스템을 사용하는 프로세스를 대상으로 한다. 운영 규모가 커지면 서비스 계층은 유지하고 저장소 구현만 SQLite 또는 PostgreSQL로 교체하는 방식을 권장한다.
+검증을 통과한 경우에만 파일 바이트를 Streamlit `st.download_button`에 전달합니다.
