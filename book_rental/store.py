@@ -30,7 +30,14 @@ SCHEMAS: dict[str, list[str]] = {
         "id", "borrow_request_id", "borrower_id", "lender_id", "book_id", "quantity",
         "loaned_at", "due_at", "returned_at", "status", "updated_at",
     ],
-    "admin_logs": ["id", "admin_id", "action", "target_type", "target_id", "memo", "created_at"],
+    "admin_logs": [
+        "id", "admin_id", "admin_name", "action", "target_type", "target_file", "target_id",
+        "memo", "before_summary", "after_summary", "created_at",
+    ],
+    "sessions": [
+        "token_hash", "user_id", "military_id", "role", "created_at", "expires_at",
+        "revoked_at", "last_seen_at",
+    ],
 }
 
 
@@ -80,6 +87,15 @@ class CsvStore:
             raise KeyError(f"Unknown table: {table}")
         return self.data_dir / f"{table}.csv"
 
+    def ensure_table(self, table: str) -> Path:
+        """Create or migrate one table that may have been removed after startup."""
+        path = self.path(table)
+        if not path.exists():
+            self._write_file(path, SCHEMAS[table], [])
+        else:
+            self._migrate_file(table, path, SCHEMAS[table])
+        return path
+
     def read(self, table: str) -> list[dict[str, str]]:
         with self.path(table).open(encoding="utf-8", newline="") as file:
             return list(csv.DictReader(file))
@@ -87,8 +103,37 @@ class CsvStore:
     def write(self, table: str, rows: list[dict[str, object]]) -> None:
         self._write_file(self.path(table), SCHEMAS[table], rows)
 
+    @staticmethod
+    def is_active(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().casefold() in {"true", "1", "yes", "y", "on"}
+
+    def read_users(self) -> list[dict[str, str]]:
+        """Read users with stable string IDs and safe defaults for legacy rows."""
+        rows = self.read("users")
+        required = {"id", "name", "military_id", "password_hash"}
+        fields = set(rows[0]) if rows else set(SCHEMAS["users"])
+        missing = sorted(required - fields)
+        if missing:
+            raise ValueError(f"users.csv 필수 컬럼이 누락되었습니다: {', '.join(missing)}")
+        normalized = []
+        for row in rows:
+            normalized.append({
+                **row,
+                "id": str(row.get("id", "")).strip(),
+                "name": str(row.get("name", "")).strip(),
+                "military_id": str(row.get("military_id", "")).strip(),
+                "password_hash": str(row.get("password_hash", "")).strip(),
+                "role": str(row.get("role", "")).strip().upper() or "USER",
+                "active": "true" if self.is_active(row.get("active", "true")) else "false",
+                "created_at": str(row.get("created_at", "")),
+                "updated_at": str(row.get("updated_at", "")),
+            })
+        return normalized
+
     def next_id(self, rows: list[dict[str, str]]) -> int:
-        return max((int(row["id"]) for row in rows), default=0) + 1
+        return max((int(row["id"]) for row in rows if row.get("id", "").isdigit()), default=0) + 1
 
     @contextmanager
     def transaction(self) -> Iterator["CsvStore"]:
