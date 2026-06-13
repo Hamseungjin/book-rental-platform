@@ -25,7 +25,7 @@ class AdminDataService:
         self.store = store
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def read_table(self, actor: dict[str, str], table: str) -> list[dict[str, str]]:
+    def read_table(self, actor: dict[str, object], table: str) -> list[dict[str, str]]:
         self._require_admin(actor)
         self._require_table(table)
         rows = self.store.read(table)
@@ -33,7 +33,7 @@ class AdminDataService:
             return [{**row, "password_hash": "••••••••"} for row in rows]
         return rows
 
-    def save_table(self, actor: dict[str, str], table: str, rows: list[dict[str, object]]) -> Path:
+    def save_table(self, actor: dict[str, object], table: str, rows: list[dict[str, object]]) -> Path:
         self._require_admin(actor)
         if table not in EDITABLE_TABLES:
             raise AuthorizationError("관리자 로그는 조회 전용입니다.")
@@ -53,7 +53,7 @@ class AdminDataService:
             self._log_changes(actor, table, before, normalized)
             return backup
 
-    def create_user(self, actor: dict[str, str], name: str, military_id: str, password: str, role: str = "USER") -> dict[str, str]:
+    def create_user(self, actor: dict[str, object], name: str, military_id: str, password: str, role: str = "USER") -> dict[str, str]:
         self._require_admin(actor)
         name, military_id = name.strip(), military_id.strip()
         if not name or not military_id:
@@ -78,7 +78,7 @@ class AdminDataService:
             self._append_log(actor, "CSV_ROW_ADDED", "users.csv", user["id"], None, user)
             return {key: value for key, value in user.items() if key != "password_hash"}
 
-    def reset_password(self, actor: dict[str, str], user_id: int, new_password: str) -> None:
+    def reset_password(self, actor: dict[str, object], user_id: int, new_password: str) -> None:
         self._require_admin(actor)
         if len(new_password) < 8:
             raise ValidationError("비밀번호는 8자 이상이어야 합니다.")
@@ -134,7 +134,7 @@ class AdminDataService:
         shutil.copy2(self.store.path(table), destination)
         return destination
 
-    def _log_changes(self, actor: dict[str, str], table: str, before: list[dict[str, str]], after: list[dict[str, str]]) -> None:
+    def _log_changes(self, actor: dict[str, object], table: str, before: list[dict[str, str]], after: list[dict[str, str]]) -> None:
         before_by_id, after_by_id = ({r["id"]: r for r in before}, {r["id"]: r for r in after})
         for row_id in sorted(before_by_id.keys() | after_by_id.keys(), key=lambda value: int(value)):
             old, new = before_by_id.get(row_id), after_by_id.get(row_id)
@@ -143,7 +143,7 @@ class AdminDataService:
             action = "CSV_ROW_ADDED" if old is None else "CSV_ROW_DELETED" if new is None else "CSV_ROW_UPDATED"
             self._append_log(actor, action, f"{table}.csv", row_id, old, new)
 
-    def _append_log(self, actor: dict[str, str], action: str, target_file: str, target_id: str, before, after) -> None:
+    def _append_log(self, actor: dict[str, object], action: str, target_file: str, target_id: str, before, after) -> None:
         logs = self.store.read("admin_logs")
         now = self.clock().astimezone(timezone.utc).isoformat(timespec="seconds")
         def summary(value):
@@ -159,8 +159,19 @@ class AdminDataService:
         self.store.write("admin_logs", logs)
 
     @staticmethod
-    def _require_admin(actor: dict[str, str] | None) -> None:
-        if not actor or actor.get("role") != "ADMIN" or not CsvStore.is_active(actor.get("active", True)):
+    def _require_admin(actor: dict[str, object] | None) -> None:
+        """Authorize both legacy string and normalized boolean session users.
+
+        Do not delegate this session-boundary check to ``CsvStore.is_active``:
+        mixed deployments may still have the older string-only store helper.
+        """
+        if not actor or str(actor.get("role", "")).strip().upper() != "ADMIN":
+            raise AuthorizationError("권한이 없습니다.")
+        active = actor.get("active", True)
+        is_active = active if isinstance(active, bool) else str(active).strip().casefold() in {
+            "true", "1", "yes", "y", "on",
+        }
+        if not is_active:
             raise AuthorizationError("권한이 없습니다.")
 
     @staticmethod

@@ -317,3 +317,7 @@ sudo journalctl -u <streamlit-service-name> -n 100 --no-pager
 cd /opt/bookbridge/app
 /opt/bookbridge/app/.venv/bin/python -c "from book_rental.login import attempt_login; print('login import OK')"
 ```
+
+### 관리자 데이터 화면의 `active` 타입 호환
+
+로그인 세션의 사용자 객체는 `active`를 Python `bool` 값으로 보관할 수 있고, 기존 CSV/이전 배포 코드는 `"true"` 문자열을 사용할 수 있습니다. 관리자 데이터 관리 권한 검사는 두 형식을 모두 허용하며, 이전 `CsvStore.is_active()`가 문자열 전용인 부분 배포 환경에도 의존하지 않습니다. 배포 후 관리자 로그인 → **데이터 관리** 진입 시 `AttributeError: 'bool' object has no attribute 'lower'`가 더 이상 발생하지 않아야 합니다.

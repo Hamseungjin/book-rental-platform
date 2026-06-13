@@ -99,3 +99,29 @@ def test_admin_adds_user_with_hashed_password(managed):
     saved = next(row for row in store.read("users") if row["id"] == created["id"])
     assert saved["password_hash"] != "safe-password"
     assert verify_password("safe-password", saved["password_hash"])
+
+
+def test_admin_data_accepts_boolean_active_from_login_session(managed, monkeypatch):
+    data, _, admin, _ = managed
+    session_admin = {**admin, "active": True}
+
+    def legacy_string_only_is_active(value):
+        return value.lower() == "true"
+
+    monkeypatch.setattr(CsvStore, "is_active", staticmethod(legacy_string_only_is_active))
+
+    rows = data.read_table(session_admin, "users")
+
+    assert rows
+
+
+@pytest.mark.parametrize("active", [False, "false", "False", "0", "off", None])
+def test_admin_data_rejects_inactive_boolean_and_string_values(managed, active):
+    data, _, admin, _ = managed
+    with pytest.raises(AuthorizationError, match="권한이 없습니다"):
+        data.read_table({**admin, "active": active}, "users")
+
+
+def test_admin_data_normalizes_role_for_session_actor(managed):
+    data, _, admin, _ = managed
+    assert data.read_table({**admin, "role": " admin ", "active": True}, "users")
