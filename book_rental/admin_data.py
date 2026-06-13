@@ -160,7 +160,7 @@ class AdminDataService:
 
     @staticmethod
     def _require_admin(actor: dict[str, str] | None) -> None:
-        if not actor or actor.get("role") != "ADMIN" or actor.get("active", "true").lower() != "true":
+        if not actor or actor.get("role") != "ADMIN" or not CsvStore.is_active(actor.get("active", True)):
             raise AuthorizationError("권한이 없습니다.")
 
     @staticmethod

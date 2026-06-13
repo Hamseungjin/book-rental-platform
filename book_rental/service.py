@@ -14,8 +14,13 @@ Clock = Callable[[], datetime]
 
 
 @dataclass(frozen=True)
-class AuthenticationFailure:
-    error: str
+class LoginResult:
+    status: str
+    user: dict[str, object] | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == "SUCCESS" and self.user is not None
 
 
 def utc_now() -> datetime:
@@ -86,23 +91,30 @@ class BookRentalService:
             self.store.write("users", users)
             return user
 
-    def authenticate(self, military_id: str, password: str) -> dict[str, str] | AuthenticationFailure:
-        """Authenticate without raising for expected credential failures."""
-        military_id = military_id.strip()
+    def authenticate(self, military_id: str, password: str) -> LoginResult:
+        """Return an explicit result for expected failures; malformed hashes still raise."""
+        normalized_id = str(military_id).strip()
+        users = self.store.read_users()
         user = next(
-            (
-                row for row in self.store.read("users")
-                if row.get("military_id", "").casefold() == military_id.casefold()
-            ),
+            (row for row in users if row["military_id"].casefold() == normalized_id.casefold()),
             None,
         )
         if user is None:
-            return AuthenticationFailure(error="ACCOUNT_NOT_FOUND")
-        if user.get("active", "").lower() != "true":
-            return AuthenticationFailure(error="ACCOUNT_INACTIVE")
-        if not verify_password(password, user.get("password_hash", "")):
-            return AuthenticationFailure(error="INVALID_PASSWORD")
-        return {key: value for key, value in user.items() if key != "password_hash"}
+            return LoginResult(status="ACCOUNT_NOT_FOUND")
+        if not self.store.is_active(user.get("active")):
+            return LoginResult(status="ACCOUNT_INACTIVE")
+        if not verify_password(password, user["password_hash"]):
+            return LoginResult(status="INVALID_PASSWORD")
+        public_user = {
+            "id": str(user["id"]),
+            "name": user["name"],
+            "military_id": str(user["military_id"]),
+            "role": user.get("role") or "USER",
+            "active": True,
+            "created_at": user.get("created_at", ""),
+            "updated_at": user.get("updated_at", ""),
+        }
+        return LoginResult(status="SUCCESS", user=public_user)
 
     def approved_books(self) -> list[dict[str, str]]:
         return self._enrich_books([row for row in self.store.read("books") if row["status"] == "APPROVED"])
@@ -277,7 +289,7 @@ class BookRentalService:
     def pdf_download(self, actor_id: int, loan_id: int) -> tuple[str, bytes]:
         loan = self._find(self.store.read("loans"), loan_id, "대출")
         actor = self._user(actor_id)
-        if actor["active"].lower() != "true" or (
+        if not self.store.is_active(actor["active"]) or (
             actor["role"] != "ADMIN" and int(loan["borrower_id"]) != actor_id
         ):
             raise AuthorizationError("해당 PDF를 다운로드할 권한이 없습니다.")
@@ -324,7 +336,7 @@ class BookRentalService:
 
     def require_role(self, user_id: int, role: str) -> dict[str, str]:
         user = self._user(user_id)
-        if user["active"].lower() != "true" or user["role"] != role:
+        if not self.store.is_active(user["active"]) or user["role"] != role:
             raise AuthorizationError("이 기능에 접근할 권한이 없습니다.")
         return user
 

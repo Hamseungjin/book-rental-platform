@@ -17,36 +17,48 @@ class SessionService:
         self.store = store
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def create(self, user: dict[str, str]) -> str:
+    def create(self, user: dict[str, object]) -> str:
         token = secrets.token_urlsafe(48)
-        now = self.clock()
+        now = self._utc(self.clock())
+        self.store.ensure_table("sessions")
         with self.store.transaction():
             sessions = self.store.read("sessions")
             sessions.append({
-                "token_hash": self._hash(token), "user_id": user["id"], "military_id": user["military_id"],
-                "role": user["role"], "created_at": self._iso(now), "expires_at": self._iso(now + timedelta(minutes=SESSION_MINUTES)),
+                "token_hash": self._hash(token), "user_id": str(user["id"]),
+                "military_id": str(user["military_id"]), "role": str(user.get("role") or "USER"),
+                "created_at": self._iso(now), "expires_at": self._iso(now + timedelta(minutes=SESSION_MINUTES)),
                 "revoked_at": "", "last_seen_at": self._iso(now),
             })
             self.store.write("sessions", sessions)
         return token
 
-    def restore(self, token: str) -> dict[str, str] | None:
+    def restore(self, token: str) -> dict[str, object] | None:
         if not token:
             return None
-        now = self.clock()
+        now = self._utc(self.clock())
         with self.store.transaction():
             sessions = self.store.read("sessions")
-            session = next((row for row in sessions if secrets.compare_digest(row["token_hash"], self._hash(token))), None)
-            if session is None or session["revoked_at"] or datetime.fromisoformat(session["expires_at"]) <= now:
+            session = next((row for row in sessions if secrets.compare_digest(row.get("token_hash", ""), self._hash(token))), None)
+            if session is None or session.get("revoked_at"):
                 return None
-            users = self.store.read("users")
-            user = next((row for row in users if row["id"] == session["user_id"]), None)
-            if user is None or user["active"].lower() != "true" or user["role"] != session["role"]:
+            try:
+                expires_at = self._utc(datetime.fromisoformat(session["expires_at"]))
+            except (KeyError, TypeError, ValueError):
+                return None
+            if expires_at <= now:
+                return None
+            users = self.store.read_users()
+            user = next((row for row in users if row["id"] == session.get("user_id")), None)
+            if user is None or not self.store.is_active(user["active"]) or user["role"] != session.get("role"):
                 return None
             session["last_seen_at"] = self._iso(now)
             session["expires_at"] = self._iso(now + timedelta(minutes=SESSION_MINUTES))
             self.store.write("sessions", sessions)
-            return {key: value for key, value in user.items() if key != "password_hash"}
+            return {
+                "id": user["id"], "name": user["name"], "military_id": user["military_id"],
+                "role": user["role"], "active": True, "created_at": user["created_at"],
+                "updated_at": user["updated_at"],
+            }
 
     def revoke(self, token: str) -> None:
         if not token:
@@ -54,7 +66,7 @@ class SessionService:
         with self.store.transaction():
             sessions = self.store.read("sessions")
             for session in sessions:
-                if secrets.compare_digest(session["token_hash"], self._hash(token)) and not session["revoked_at"]:
+                if secrets.compare_digest(session.get("token_hash", ""), self._hash(token)) and not session.get("revoked_at"):
                     session["revoked_at"] = self._iso(self.clock())
             self.store.write("sessions", sessions)
 
@@ -62,6 +74,12 @@ class SessionService:
     def _hash(token: str) -> str:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
+    @classmethod
+    def _iso(cls, value: datetime) -> str:
+        return cls._utc(value).isoformat(timespec="seconds")
+
     @staticmethod
-    def _iso(value: datetime) -> str:
-        return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+    def _utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)

@@ -9,6 +9,7 @@ import streamlit.components.v1 as components
 from book_rental.admin_data import AdminDataService
 from book_rental.config import get_data_dir
 from book_rental.errors import BookRentalError
+from book_rental.login import attempt_login
 from book_rental.service import BookRentalService
 from book_rental.sessions import SESSION_MINUTES, SessionService
 from book_rental.store import SCHEMAS, CsvStore
@@ -71,11 +72,18 @@ cookie_token = st.session_state.get("session_token", "")
 if not cookie_token and "user" not in st.session_state:
     cookie_token = st.context.cookies.get(COOKIE_NAME, "")
 if cookie_token:
-    restored_user = sessions.restore(cookie_token)
+    try:
+        restored_user = sessions.restore(cookie_token)
+    except Exception:
+        LOGGER.exception("Persistent session restore failed for data_dir=%s sessions_path=%s", DATA_DIR, store.path("sessions"))
+        restored_user = None
     if restored_user:
         st.session_state.user = restored_user
         st.session_state.session_token = cookie_token
-        set_browser_cookie(cookie_token, reload=False)
+        try:
+            set_browser_cookie(cookie_token, reload=False)
+        except Exception:
+            LOGGER.exception("Browser cookie refresh failed for user_id=%s", restored_user["id"])
     else:
         st.session_state.pop("user", None)
         st.session_state.pop("session_token", None)
@@ -99,7 +107,10 @@ with st.sidebar:
         st.write(f"**현재 사용자: {actor['name']} / 군번: {actor['military_id']}**")
         if st.button("로그아웃", use_container_width=True):
             token = st.session_state.pop("session_token", st.context.cookies.get(COOKIE_NAME, ""))
-            sessions.revoke(token)
+            try:
+                sessions.revoke(token)
+            except Exception:
+                LOGGER.exception("Persistent session revoke failed for data_dir=%s", DATA_DIR)
             st.session_state.pop("user", None)
             go_to("책 둘러보기")
             set_browser_cookie("", delete=True)
@@ -167,26 +178,40 @@ elif page == "로그인":
         submitted = st.form_submit_button("로그인", type="primary")
     if submitted:
         try:
-            result = service.authenticate(military_id, password)
-            if isinstance(result, dict):
-                token = sessions.create(result)
-                st.session_state.user = result
-                st.session_state.session_token = token
-                st.session_state.flash = "로그인되었습니다. 15분 동안 로그인 상태가 유지됩니다."
-                go_to("책 둘러보기")
-                set_browser_cookie(token)
-                st.stop()
-            elif result.error == "ACCOUNT_NOT_FOUND":
+            attempt = attempt_login(service, sessions, military_id, password, LOGGER)
+        except Exception:
+            LOGGER.exception(
+                "Login authentication failed unexpectedly for military_id=%r data_dir=%s users_path=%s",
+                str(military_id).strip(), DATA_DIR, store.path("users"),
+            )
+            st.error("로그인 처리 중 오류가 발생했습니다.")
+        else:
+            result = attempt.result
+            if result.succeeded:
+                st.session_state.user = result.user
+                if attempt.token:
+                    st.session_state.session_token = attempt.token
+                    st.session_state.flash = "로그인되었습니다. 15분 동안 로그인 상태가 유지됩니다."
+                    go_to("책 둘러보기")
+                    try:
+                        set_browser_cookie(attempt.token)
+                    except Exception:
+                        LOGGER.exception("Login succeeded but browser cookie setup failed for user_id=%s", result.user["id"])
+                        st.session_state.flash = "로그인되었습니다. 다만 새로고침 시 다시 로그인해야 할 수 있습니다."
+                        st.rerun()
+                    st.stop()
+                else:
+                    st.session_state.flash = "로그인되었습니다. 다만 로그인 유지 기능을 사용할 수 없습니다."
+                    go_to("책 둘러보기")
+                    st.rerun()
+            elif result.status == "ACCOUNT_NOT_FOUND":
                 st.toast("존재하지 않는 계정입니다.")
                 st.error("존재하지 않는 계정입니다.")
-            elif result.error == "INVALID_PASSWORD":
+            elif result.status == "INVALID_PASSWORD":
                 st.toast("비밀번호가 틀렸습니다.")
                 st.error("비밀번호가 틀렸습니다.")
             else:
-                st.error("비활성화된 계정입니다. 관리자에게 문의해주세요.")
-        except Exception:
-            LOGGER.exception("Login failed unexpectedly")
-            st.error("로그인 처리 중 오류가 발생했습니다.")
+                st.error("비활성화된 계정입니다. 관리자에게 문의하세요.")
 
 elif page == "회원가입":
     st.title("회원가입")
