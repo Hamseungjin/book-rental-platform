@@ -76,3 +76,41 @@ def test_pdf_submission_succeeds_and_confirm_moves_to_lender_books(registration_
     assert "내 등록 도서" in [title.value for title in app.title]
     assert app.dataframe[0].value.iloc[0]["title"] == "테스트 PDF"
     assert len(service.store.read("books")) == 1
+
+
+def test_login_flow_returns_app_compatible_user_and_creates_session(tmp_path, monkeypatch):
+    data_dir = tmp_path / "login-data"
+    monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(data_dir))
+    service = BookRentalService(CsvStore())
+    service.register_user("엄준식", "333", "password333", "password333")
+    app = AppTest.from_file(APP_PATH, default_timeout=10)
+    app.session_state["page"] = "로그인"
+    app.run()
+    app.text_input[0].set_value("333")
+    app.text_input[1].set_value("password333")
+    app.button(key="FormSubmitter:login-form-로그인").click()
+    app.run()
+
+    assert not app.exception
+    assert app.session_state["user"]["id"] == "1"
+    assert app.session_state["user"]["active"] is True
+    assert app.session_state["user"]["role"] == "USER"
+    assert len(service.store.read("sessions")) == 1
+
+
+def test_admin_data_page_accepts_boolean_active_session_user(tmp_path, monkeypatch):
+    data_dir = tmp_path / "admin-data"
+    monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(data_dir))
+    service = BookRentalService(CsvStore())
+    admin, _ = service.create_admin("관리자", "admin", "admin1234")
+    session_admin = {key: value for key, value in admin.items() if key != "password_hash"}
+    session_admin["active"] = True
+
+    app = AppTest.from_file(APP_PATH, default_timeout=10)
+    app.session_state["user"] = session_admin
+    app.session_state["page"] = "데이터 관리"
+    app.run()
+
+    assert not app.exception
+    assert "데이터 관리" in [title.value for title in app.title]
+    assert not [error.value for error in app.error if "권한이 없습니다" in error.value]
