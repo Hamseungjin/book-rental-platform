@@ -80,7 +80,7 @@ def _public_user(user: dict[str, object]) -> dict[str, object]:
     """Normalize the session-safe user shape used by Streamlit."""
     role = str(user.get("role") or "USER").strip().upper() or "USER"
     active_value = user.get("active", True)
-    active = active_value if isinstance(active_value, bool) else str(active_value).strip().casefold() in {
+    is_active = active_value if isinstance(active_value, bool) else str(active_value).strip().casefold() in {
         "true", "1", "yes", "y", "on",
     }
     return {
@@ -88,7 +88,8 @@ def _public_user(user: dict[str, object]) -> dict[str, object]:
         "name": str(user.get("name", "")).strip(),
         "military_id": str(user.get("military_id", "")).strip(),
         "role": role,
-        "active": active,
+        # Keep the public/session boundary compatible with legacy code that calls .lower().
+        "active": "true" if is_active else "false",
         "created_at": str(user.get("created_at", "")),
         "updated_at": str(user.get("updated_at", "")),
     }

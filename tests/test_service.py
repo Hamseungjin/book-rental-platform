@@ -283,7 +283,7 @@ def test_numeric_military_id_and_true_active_string_authenticate(tmp_path):
     assert result.succeeded is True
     assert result.user == {
         "id": user["id"], "name": "엄준식", "military_id": "333", "role": "USER",
-        "active": True, "created_at": user["created_at"], "updated_at": user["updated_at"],
+        "active": "true", "created_at": user["created_at"], "updated_at": user["updated_at"],
     }
 
 

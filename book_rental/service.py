@@ -110,7 +110,7 @@ class BookRentalService:
             "name": user["name"],
             "military_id": str(user["military_id"]),
             "role": user.get("role") or "USER",
-            "active": True,
+            "active": "true",
             "created_at": user.get("created_at", ""),
             "updated_at": user.get("updated_at", ""),
         }

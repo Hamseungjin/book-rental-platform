@@ -93,7 +93,7 @@ def test_login_flow_returns_app_compatible_user_and_creates_session(tmp_path, mo
 
     assert not app.exception
     assert app.session_state["user"]["id"] == "1"
-    assert app.session_state["user"]["active"] is True
+    assert app.session_state["user"]["active"] == "true"
     assert app.session_state["user"]["role"] == "USER"
     assert len(service.store.read("sessions")) == 1
 

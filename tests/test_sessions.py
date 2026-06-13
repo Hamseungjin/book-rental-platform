@@ -66,3 +66,11 @@ def test_naive_clock_does_not_break_session_expiration(tmp_path):
     current[0] = current[0].replace(tzinfo=None)
     token = sessions.create(user)
     assert sessions.restore(token)["id"] == user["id"]
+
+
+def test_restored_user_active_is_legacy_string_compatible(tmp_path):
+    _, _, user, sessions = setup(tmp_path)
+    token = sessions.create(user)
+    restored = sessions.restore(token)
+    assert restored["active"] == "true"
+    assert restored["active"].lower() == "true"

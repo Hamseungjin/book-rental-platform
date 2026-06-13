@@ -320,4 +320,41 @@ cd /opt/bookbridge/app
 
 ### 관리자 데이터 화면의 `active` 타입 호환
 
-로그인 세션의 사용자 객체는 `active`를 Python `bool` 값으로 보관할 수 있고, 기존 CSV/이전 배포 코드는 `"true"` 문자열을 사용할 수 있습니다. 관리자 데이터 관리 권한 검사는 두 형식을 모두 허용하며, 이전 `CsvStore.is_active()`가 문자열 전용인 부분 배포 환경에도 의존하지 않습니다. 배포 후 관리자 로그인 → **데이터 관리** 진입 시 `AttributeError: 'bool' object has no attribute 'lower'`가 더 이상 발생하지 않아야 합니다.
+로그인 입력은 `active`를 Python `bool` 또는 문자열로 받을 수 있지만, 공개 세션 사용자 객체는 구버전 호환을 위해 `"true"`/`"false"` 문자열로 통일합니다. 관리자 데이터 관리 권한 검사 자체도 두 입력 형식을 모두 허용하며, 이전 `CsvStore.is_active()`가 문자열 전용인 부분 배포 환경에도 의존하지 않습니다. 배포 후 관리자 로그인 → **데이터 관리** 진입 시 `AttributeError: 'bool' object has no attribute 'lower'`가 더 이상 발생하지 않아야 합니다.
+
+### traceback 행과 실제 코드가 다른 경우 (`__pycache__` 정리)
+
+traceback이 `admin_data.py`의 docstring 행을 가리키면서 실제 예외는 이전 코드의 `.lower()`에서 발생한다면, 소스 파일은 갱신됐지만 실행 프로세스 또는 timestamp 기반 `.pyc`가 이전 바이트코드를 계속 사용하는 상태입니다. 로그인/세션의 공개 사용자 객체는 구버전 호환을 위해 `active`를 다시 `"true"`/`"false"` 문자열로 통일했으므로 이전 권한 코드가 `.lower()`를 호출해도 안전합니다.
+
+배포 서버에서는 서비스 정지 후 캐시를 제거하고 같은 커밋 전체를 확인한 다음 시작하세요.
+
+```bash
+cd /opt/bookbridge/app
+sudo systemctl stop <streamlit-service-name>
+find /opt/bookbridge/app -type d -name __pycache__ -prune -exec rm -rf {} +
+find /opt/bookbridge/app -type f -name '*.py[co]' -delete
+git status --short
+git rev-parse HEAD
+/opt/bookbridge/app/.venv/bin/python -B -m compileall -q -f app.py book_rental
+/opt/bookbridge/app/.venv/bin/python -B - <<'PY'
+from book_rental.admin_data import AdminDataService
+from book_rental.login import normalize_authentication_result
+
+actor = normalize_authentication_result({
+    "id": "2", "name": "관리자", "military_id": "admin",
+    "role": "ADMIN", "active": True,
+}).user
+print(f"active={actor['active']!r}, type={type(actor['active']).__name__}")
+AdminDataService._require_admin(actor)
+print("관리자 데이터 권한 검사 성공")
+PY
+sudo systemctl start <streamlit-service-name>
+sudo journalctl -u <streamlit-service-name> -n 100 --no-pager
+```
+
+정상 출력의 `active`는 문자열입니다.
+
+```text
+active='true', type=str
+관리자 데이터 권한 검사 성공
+```

@@ -56,7 +56,7 @@ class SessionService:
             self.store.write("sessions", sessions)
             return {
                 "id": user["id"], "name": user["name"], "military_id": user["military_id"],
-                "role": user["role"], "active": True, "created_at": user["created_at"],
+                "role": user["role"], "active": "true", "created_at": user["created_at"],
                 "updated_at": user["updated_at"],
             }
 

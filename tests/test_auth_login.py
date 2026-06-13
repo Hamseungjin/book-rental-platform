@@ -68,7 +68,7 @@ def test_login_module_accepts_legacy_success_dict_without_importing_service_resu
     assert attempt.result.succeeded is True
     assert attempt.result.user["id"] == "4"
     assert attempt.result.user["military_id"] == "333"
-    assert attempt.result.user["active"] is True
+    assert attempt.result.user["active"] == "true"
     assert "password_hash" not in attempt.result.user
     assert attempt.token
 
@@ -87,3 +87,14 @@ def test_login_module_accepts_legacy_failure_object(tmp_path):
 
     assert attempt.result.status == "INVALID_PASSWORD"
     assert attempt.result.succeeded is False
+
+
+def test_normalized_session_user_remains_compatible_with_legacy_lower_check():
+    from book_rental.login import normalize_authentication_result
+
+    result = normalize_authentication_result({
+        "id": "2", "name": "관리자", "military_id": "admin", "role": "ADMIN", "active": True,
+    })
+
+    assert result.user["active"] == "true"
+    assert result.user["active"].lower() == "true"
