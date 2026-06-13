@@ -171,3 +171,190 @@ tests/test_service.py                   # 인증·권한·대여·마이그레�
 ```
 
 상세 설계는 [`docs/architecture.md`](docs/architecture.md)를 참고하세요.
+
+## 관리자 데이터 관리
+
+`ADMIN` 역할로 로그인하면 사이드바의 **데이터 관리** 메뉴에서 다음 CSV를 관리할 수 있습니다.
+
+- 사용자 관리: `users.csv`
+- 도서 관리: `books.csv`
+- 대여 요청 관리: `borrow_requests.csv`
+- 대출 관리: `loans.csv`
+- 관리자 로그 보기: `admin_logs.csv` (조회 전용)
+
+화면 상단에는 앱이 실제 사용하는 데이터 디렉터리가 표시됩니다. 관리 화면은 `/opt/bookbridge/app/data` 또는 `/opt/bookbridge/data`를 하드코딩하지 않으며, 앱·CLI와 동일하게 `BOOKBRIDGE_DATA_DIR` 및 `get_data_dir()`가 결정한 경로만 수정합니다. 일반 사용자는 메뉴를 볼 수 없고 세션 상태를 조작해 접근해도 `권한이 없습니다.` 메시지가 표시됩니다.
+
+편집기는 행 추가·수정·삭제, 저장 전 미리보기, 변경 취소/새로고침을 지원합니다. 행 삭제가 감지되면 별도의 삭제 확인 체크가 필요합니다. `password_hash`는 편집기에서 마스킹되고 읽기 전용이며, 비밀번호 변경은 별도 **비밀번호 재설정** 폼에서만 수행됩니다. 입력한 평문은 PBKDF2 해시로 변환되며 CSV에는 저장되지 않습니다.
+
+### CSV 백업과 안전한 저장
+
+관리자 편집 저장 직전에 현재 파일을 다음 위치에 자동 백업합니다.
+
+```text
+${BOOKBRIDGE_DATA_DIR}/backups/<table>_YYYYMMDD_HHMMSS_microseconds.csv
+```
+
+저장은 프로세스 공통 `fcntl` 잠금 안에서 최신 CSV를 다시 읽어 처리합니다. 각 CSV는 같은 디렉터리의 임시 파일에 먼저 기록하고 `fsync` 후 `os.replace`로 원자적으로 교체합니다. 여러 CSV를 갱신하는 대여 승인 같은 작업에서 오류가 발생하면 트랜잭션 시작 시점 파일로 전체 복원합니다. 관리자 저장은 필수 컬럼, 숫자 ID와 ID 중복, 군번 중복, 수량 범위, 요청/대출 상태값을 검증한 뒤 수행합니다.
+
+관리자 데이터 추가·수정·삭제 및 비밀번호 재설정은 `admin_logs.csv`에 관리자 ID/이름, 작업 종류, 대상 파일/ID, 작업 시간, 변경 전·후 요약으로 기록됩니다. 비밀번호 해시는 로그 요약에도 노출하지 않습니다.
+
+## 대여 요청과 수량 반영
+
+BookBridge는 **요청 시에는 수량을 차감하지 않고 관리자 승인 시 차감**하는 정책을 사용합니다.
+
+1. 사용자가 대여 요청을 제출하면 잠금 안에서 최신 `books.csv`, `borrow_requests.csv`, `loans.csv`를 다시 읽습니다.
+2. 재고 부족, 동일 사용자의 처리 대기 요청 또는 동일 도서의 활성 대출을 검증합니다.
+3. 관리자가 승인할 때 최신 재고를 다시 확인합니다.
+4. 재고가 충분하면 같은 트랜잭션에서 `books.available_quantity` 감소, 요청 `APPROVED` 변경, `loans.csv` 행 생성을 수행합니다.
+5. Streamlit은 성공 메시지를 `st.toast()`와 `st.success()`로 표시한 뒤 `st.rerun()`하여 최신 수량을 즉시 다시 읽습니다.
+
+재고가 0인 도서는 대여 버튼과 수량 입력이 비활성화되고 `대여 가능한 수량이 없습니다.`가 표시됩니다. 동시 승인으로 수량이 부족해지면 후속 승인은 실패하며 요청은 `REQUESTED` 상태로 유지됩니다.
+
+## 15분 로그인 유지
+
+로그인 성공 시 48바이트 이상의 난수 기반 토큰을 만들고 브라우저의 `bookbridge_session` 쿠키에는 토큰 원문만, `sessions.csv`에는 SHA-256 토큰 해시만 저장합니다. 비밀번호와 `password_hash`는 쿠키나 세션 CSV에 저장하지 않습니다.
+
+`sessions.csv` 스키마는 다음과 같습니다.
+
+```text
+token_hash,user_id,military_id,role,created_at,expires_at,revoked_at,last_seen_at
+```
+
+앱 실행 및 새로고침 시 쿠키 토큰의 해시와 `sessions.csv`를 대조하여 사용자를 복구합니다. 세션은 **활동 시마다 만료 시간이 다시 15분 뒤로 연장되는 sliding expiration** 방식입니다. 마지막 활동 후 15분이 지나면 자동 로그아웃되고 `로그인 세션이 만료되었습니다. 다시 로그인해주세요.`가 표시됩니다. 로그아웃 버튼은 서버 세션의 `revoked_at`을 기록하고 브라우저 쿠키를 삭제합니다.
+
+별도 쿠키 패키지는 추가하지 않았습니다. Streamlit의 `st.context.cookies`로 쿠키를 읽고 동일 출처의 최소 JavaScript 컴포넌트로 토큰 쿠키를 설정·삭제합니다. 쿠키에는 인증 비밀정보가 아닌 폐기 가능한 랜덤 토큰만 저장되며 `SameSite=Lax`, 15분 `Max-Age`, 루트 경로를 사용합니다. 운영 배포에서는 HTTPS 사용을 권장합니다.
+
+## 운영 환경변수
+
+```bash
+export BOOKBRIDGE_DATA_DIR=/opt/bookbridge/app/data
+# 관리자 생성 CLI에서만 필요
+export BOOKBRIDGE_ADMIN_ID=admin
+export BOOKBRIDGE_ADMIN_PASSWORD='안전한-비밀번호'
+export BOOKBRIDGE_ADMIN_NAME=관리자
+streamlit run app.py
+```
+
+이번 기능에 새로 추가된 필수 환경변수는 없습니다. `BOOKBRIDGE_DATA_DIR`를 지정하지 않으면 프로젝트 루트의 `data/`를 사용합니다.
+
+## 추가 수동 확인 시나리오
+
+1. 관리자로 로그인해 **데이터 관리**의 다섯 하위 화면과 현재 데이터 디렉터리가 표시되는지 확인합니다.
+2. 일반 사용자 로그인 및 세션 상태 조작 상황에서 데이터 관리 메뉴가 숨겨지고 직접 접근 시 권한 오류가 표시되는지 확인합니다.
+3. 도서 행을 추가·수정하고 미리보기 후 저장한 다음 `backups/` 백업과 관리자 로그가 생성되는지 확인합니다.
+4. 도서 행 삭제 후 확인 체크 없이 저장이 거부되고, 확인 후에는 삭제되는지 확인합니다.
+5. 사용자 비밀번호를 재설정한 뒤 CSV에 평문이 없고 새 비밀번호로 로그인되는지 확인합니다.
+6. 재고 1권인 도서를 요청하고 관리자가 승인한 직후 목록이 `0 / 1`로 바뀌며 버튼이 비활성화되는지 확인합니다.
+7. 같은 책에 대한 중복 요청/활성 대출과 재고 부족 승인이 한국어 오류로 차단되는지 확인합니다.
+8. 로그인 후 브라우저를 새로고침해 계정이 복구되는지, 활동 후 만료가 15분 연장되는지 확인합니다.
+9. 마지막 활동 후 15분 이상 지난 토큰이 자동 로그인되지 않는지, 로그아웃한 토큰을 다시 넣어도 복구되지 않는지 확인합니다.
+
+## 로그인 오류 진단
+
+로그인은 이제 다음 두 단계를 분리해서 처리합니다.
+
+1. `users.csv`에서 군번, 활성 상태, 비밀번호 해시를 검증하는 기본 인증
+2. 인증 성공 후 `sessions.csv`에 15분 유지 토큰을 저장하고 브라우저 쿠키를 설정하는 지속 로그인 처리
+
+존재하지 않는 군번, 비밀번호 불일치, 비활성 계정은 예상 가능한 로그인 실패 결과로 처리합니다. 손상된 `password_hash`, CSV 읽기 오류 등 내부 오류는 사용자에게 상세 정보를 노출하지 않고 `로그인 처리 중 오류가 발생했습니다.`를 표시하며, 서버 로그에는 `logging.exception()`으로 예외 타입과 전체 traceback, 사용 데이터 경로 및 CSV 경로를 기록합니다.
+
+기본 인증이 성공한 뒤 `sessions.csv` 저장이나 쿠키 설정만 실패한 경우에는 현재 Streamlit 세션의 로그인을 유지합니다. 이 경우 서버 로그에 원인을 남기고 사용자에게 새로고침 로그인 유지가 제한될 수 있음을 안내합니다. `sessions.csv`가 없으면 세션 생성 시 현재 스키마로 자동 생성합니다.
+
+`password_hash`는 다음 형식을 엄격하게 파싱합니다.
+
+```text
+pbkdf2_sha256$600000$urlsafe-base64-salt$urlsafe-base64-sha256-digest
+```
+
+형식 오류와 단순 비밀번호 불일치를 구분하며, 정상 해시는 PBKDF2-SHA256 계산 후 `hmac.compare_digest()`로 비교합니다.
+
+### 서버 CLI 로그인 진단
+
+Streamlit과 같은 데이터 디렉터리 및 `users.csv`를 사용하는지 다음 명령으로 확인할 수 있습니다.
+
+```bash
+cd /opt/bookbridge/app
+export BOOKBRIDGE_DATA_DIR=/opt/bookbridge/data
+python3 -m book_rental.admin_command_runner debug-login --military-id 333
+```
+
+명령은 비밀번호를 화면에 표시하지 않는 대화형 입력으로 받으며 다음 항목만 출력합니다.
+
+- 사용 데이터 디렉터리
+- 실제 `users.csv` 경로
+- 해당 군번 사용자 존재 여부
+- 활성 상태와 역할
+- `password_hash` 포맷 정상 여부
+- 입력한 비밀번호 검증 성공/실패
+
+비밀번호 원문과 전체 `password_hash`는 출력하지 않습니다. CLI 검증 성공 후 `http://13.209.30.31/`에서 군번 `333`으로 로그인하고, 새로고침 후 15분 이내 로그인 유지와 로그아웃을 차례로 확인하세요.
+
+### `LoginResult` ImportError 배포 복구
+
+다음 오류는 `book_rental/login.py`만 새 버전이고 `book_rental/service.py`는 이전 버전인 부분 배포에서 발생합니다.
+
+```text
+ImportError: cannot import name 'LoginResult' from 'book_rental.service'
+```
+
+현재 `login.py`는 더 이상 `service.LoginResult`를 import하지 않습니다. 이전 서비스의 성공 `dict`/실패 `error` 객체와 현재 서비스의 `status`/`user` 객체를 모두 내부 호환 결과로 정규화합니다. 따라서 이 ImportError 때문에 Streamlit 앱 전체가 시작되지 않는 문제를 방지합니다.
+
+배포 시에는 파일을 개별 복사하지 말고 같은 Git 커밋 전체를 반영한 뒤 서비스를 재시작하세요.
+
+```bash
+cd /opt/bookbridge/app
+git fetch --all
+git checkout <배포-브랜치>
+git pull --ff-only
+/opt/bookbridge/app/.venv/bin/python -m compileall -q app.py book_rental
+sudo systemctl restart <streamlit-service-name>
+sudo journalctl -u <streamlit-service-name> -n 100 --no-pager
+```
+
+실제 배포 파일에서 의존성이 제거되었는지는 다음 명령으로 확인할 수 있습니다.
+
+```bash
+cd /opt/bookbridge/app
+/opt/bookbridge/app/.venv/bin/python -c "from book_rental.login import attempt_login; print('login import OK')"
+```
+
+### 관리자 데이터 화면의 `active` 타입 호환
+
+로그인 입력은 `active`를 Python `bool` 또는 문자열로 받을 수 있지만, 공개 세션 사용자 객체는 구버전 호환을 위해 `"true"`/`"false"` 문자열로 통일합니다. 관리자 데이터 관리 권한 검사 자체도 두 입력 형식을 모두 허용하며, 이전 `CsvStore.is_active()`가 문자열 전용인 부분 배포 환경에도 의존하지 않습니다. 배포 후 관리자 로그인 → **데이터 관리** 진입 시 `AttributeError: 'bool' object has no attribute 'lower'`가 더 이상 발생하지 않아야 합니다.
+
+### traceback 행과 실제 코드가 다른 경우 (`__pycache__` 정리)
+
+traceback이 `admin_data.py`의 docstring 행을 가리키면서 실제 예외는 이전 코드의 `.lower()`에서 발생한다면, 소스 파일은 갱신됐지만 실행 프로세스 또는 timestamp 기반 `.pyc`가 이전 바이트코드를 계속 사용하는 상태입니다. 로그인/세션의 공개 사용자 객체는 구버전 호환을 위해 `active`를 다시 `"true"`/`"false"` 문자열로 통일했으므로 이전 권한 코드가 `.lower()`를 호출해도 안전합니다.
+
+배포 서버에서는 서비스 정지 후 캐시를 제거하고 같은 커밋 전체를 확인한 다음 시작하세요.
+
+```bash
+cd /opt/bookbridge/app
+sudo systemctl stop <streamlit-service-name>
+find /opt/bookbridge/app -type d -name __pycache__ -prune -exec rm -rf {} +
+find /opt/bookbridge/app -type f -name '*.py[co]' -delete
+git status --short
+git rev-parse HEAD
+/opt/bookbridge/app/.venv/bin/python -B -m compileall -q -f app.py book_rental
+/opt/bookbridge/app/.venv/bin/python -B - <<'PY'
+from book_rental.admin_data import AdminDataService
+from book_rental.login import normalize_authentication_result
+
+actor = normalize_authentication_result({
+    "id": "2", "name": "관리자", "military_id": "admin",
+    "role": "ADMIN", "active": True,
+}).user
+print(f"active={actor['active']!r}, type={type(actor['active']).__name__}")
+AdminDataService._require_admin(actor)
+print("관리자 데이터 권한 검사 성공")
+PY
+sudo systemctl start <streamlit-service-name>
+sudo journalctl -u <streamlit-service-name> -n 100 --no-pager
+```
+
+정상 출력의 `active`는 문자열입니다.
+
+```text
+active='true', type=str
+관리자 데이터 권한 검사 성공
+```
