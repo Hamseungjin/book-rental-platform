@@ -1,1 +1,0 @@
-id,borrow_request_id,borrower_id,lender_id,book_id,quantity,loaned_at,due_at,returned_at,status,updated_at
