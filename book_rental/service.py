@@ -190,13 +190,17 @@ class BookRentalService:
             if book["status"] != "APPROVED":
                 raise ValidationError("승인된 책만 대여 요청할 수 있습니다.")
             if quantity > int(book["available_quantity"]):
-                raise ValidationError("현재 대여 가능한 수량보다 많이 요청할 수 없습니다.")
+                raise ValidationError("대여 가능한 수량이 없습니다.")
             requests = self.store.read("borrow_requests")
+            loans = self.store.read("loans")
             if any(
                 int(row["borrower_id"]) == borrower_id and int(row["book_id"]) == book_id
                 and row["status"] == "REQUESTED" for row in requests
+            ) or any(
+                int(row["borrower_id"]) == borrower_id and int(row["book_id"]) == book_id
+                and row["status"] in {"LOANED", "OVERDUE"} for row in loans
             ):
-                raise ValidationError("이미 처리 대기 중인 대여 요청이 있습니다.")
+                raise ValidationError("동일한 책을 중복 대여할 수 없습니다.")
             now = iso(self.clock())
             request = {
                 "id": str(self.store.next_id(requests)), "borrower_id": str(borrower_id),

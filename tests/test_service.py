@@ -258,3 +258,12 @@ def test_admin_runner_data_dir_argument_overrides_environment(tmp_path, monkeypa
     monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(environment_dir))
 
     assert resolve_data_dir(str(command_dir)) == command_dir.resolve()
+
+
+def test_duplicate_active_loan_is_rejected(service):
+    book = create_approved_book(service, quantity=2)
+    request = service.create_borrow_request(service.member_id, int(book["id"]), 1)
+    service.approve_request(service.admin_id, int(request["id"]))
+
+    with pytest.raises(ValidationError, match="중복 대여"):
+        service.create_borrow_request(service.member_id, int(book["id"]), 1)

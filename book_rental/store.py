@@ -30,7 +30,14 @@ SCHEMAS: dict[str, list[str]] = {
         "id", "borrow_request_id", "borrower_id", "lender_id", "book_id", "quantity",
         "loaned_at", "due_at", "returned_at", "status", "updated_at",
     ],
-    "admin_logs": ["id", "admin_id", "action", "target_type", "target_id", "memo", "created_at"],
+    "admin_logs": [
+        "id", "admin_id", "admin_name", "action", "target_type", "target_file", "target_id",
+        "memo", "before_summary", "after_summary", "created_at",
+    ],
+    "sessions": [
+        "token_hash", "user_id", "military_id", "role", "created_at", "expires_at",
+        "revoked_at", "last_seen_at",
+    ],
 }
 
 
@@ -88,7 +95,7 @@ class CsvStore:
         self._write_file(self.path(table), SCHEMAS[table], rows)
 
     def next_id(self, rows: list[dict[str, str]]) -> int:
-        return max((int(row["id"]) for row in rows), default=0) + 1
+        return max((int(row["id"]) for row in rows if row.get("id", "").isdigit()), default=0) + 1
 
     @contextmanager
     def transaction(self) -> Iterator["CsvStore"]:

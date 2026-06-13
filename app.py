@@ -4,11 +4,14 @@ import logging
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
+from book_rental.admin_data import AdminDataService
 from book_rental.config import get_data_dir
 from book_rental.errors import BookRentalError
 from book_rental.service import BookRentalService
-from book_rental.store import CsvStore
+from book_rental.sessions import SESSION_MINUTES, SessionService
+from book_rental.store import SCHEMAS, CsvStore
 
 st.set_page_config(page_title="BookBridge", page_icon="📚", layout="wide")
 
@@ -16,7 +19,11 @@ LOGGER = logging.getLogger("bookbridge")
 LOGGER.setLevel(logging.INFO)
 DATA_DIR = get_data_dir()
 LOGGER.info("BookBridge data directory: %s", DATA_DIR)
-service = BookRentalService(CsvStore(DATA_DIR))
+store = CsvStore(DATA_DIR)
+service = BookRentalService(store)
+admin_data = AdminDataService(store)
+sessions = SessionService(store)
+COOKIE_NAME = "bookbridge_session"
 
 
 def run(action, success: str) -> None:
@@ -46,6 +53,38 @@ def go_to(page: str) -> None:
     st.session_state.nav_version = st.session_state.get("nav_version", 0) + 1
 
 
+def set_browser_cookie(token: str, *, delete: bool = False, reload: bool = True) -> None:
+    """Set the HttpOnly-ineligible UI cookie, then reload so Streamlit can read it."""
+    max_age = 0 if delete else SESSION_MINUTES * 60
+    value = "" if delete else token
+    components.html(
+        f"""<script>
+        document.cookie = {COOKIE_NAME!r} + '=' + encodeURIComponent({value!r})
+          + '; path=/; max-age={max_age}; SameSite=Lax';
+        if ({str(reload).lower()}) setTimeout(() => window.parent.location.reload(), 150);
+        </script>""",
+        height=0,
+    )
+
+
+cookie_token = st.session_state.get("session_token", "")
+if not cookie_token and "user" not in st.session_state:
+    cookie_token = st.context.cookies.get(COOKIE_NAME, "")
+if cookie_token:
+    restored_user = sessions.restore(cookie_token)
+    if restored_user:
+        st.session_state.user = restored_user
+        st.session_state.session_token = cookie_token
+        set_browser_cookie(cookie_token, reload=False)
+    else:
+        st.session_state.pop("user", None)
+        st.session_state.pop("session_token", None)
+        st.session_state.session_expired = True
+
+if st.session_state.pop("session_expired", False):
+    st.warning("로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
+    set_browser_cookie("", delete=True)
+
 if flash := st.session_state.pop("flash", None):
     st.toast(flash)
     st.success(flash)
@@ -59,22 +98,29 @@ with st.sidebar:
     if actor:
         st.write(f"**현재 사용자: {actor['name']} / 군번: {actor['military_id']}**")
         if st.button("로그아웃", use_container_width=True):
+            token = st.session_state.pop("session_token", st.context.cookies.get(COOKIE_NAME, ""))
+            sessions.revoke(token)
             st.session_state.pop("user", None)
             go_to("책 둘러보기")
-            st.rerun()
+            set_browser_cookie("", delete=True)
+            st.stop()
         menu = ["책 둘러보기"]
         if role == "USER":
             menu += ["내 대여", "책 등록", "내 등록 도서"]
         elif role == "ADMIN":
-            menu += ["관리자 대시보드", "도서 승인", "대여 승인", "전체 대출", "사용자 관리"]
+            menu += ["관리자 대시보드", "도서 승인", "대여 승인", "전체 대출", "사용자 관리", "데이터 관리"]
     else:
         st.info("로그인하거나 회원가입 후 대여·등록 기능을 이용할 수 있습니다.")
         menu = ["책 둘러보기", "로그인", "회원가입"]
     requested_page = st.session_state.get("page", menu[0])
+    forbidden_page = requested_page == "데이터 관리" and role != "ADMIN"
     if requested_page not in menu:
         requested_page = menu[0]
     page = st.radio("메뉴", menu, index=menu.index(requested_page), key=f"navigation-{st.session_state.get('nav_version', 0)}")
     st.session_state.page = page
+
+if forbidden_page:
+    st.error("권한이 없습니다.")
 
 if page == "책 둘러보기":
     st.title("📚 BookBridge")
@@ -103,10 +149,13 @@ if page == "책 둘러보기":
             left.write(book["description"] or "설명이 없습니다.")
             left.caption(f"형식: {'PDF' if book['format'] == 'PDF' else '실물 도서'} · 등록자: {book['lender_name']}")
             right.metric("대여 가능 수량", f"{book['available_quantity']} / {book['total_quantity']}")
-            if role == "USER" and int(book["available_quantity"]) > 0:
-                quantity = right.number_input("수량", 1, int(book["available_quantity"]), key=f"qty-{book['id']}")
-                if right.button("대여 요청", key=f"borrow-{book['id']}", type="primary"):
-                    run(lambda b=int(book["id"]), q=int(quantity): service.create_borrow_request(actor_id, b, q), "대여 요청을 등록했습니다.")
+            if role == "USER":
+                available = int(book["available_quantity"])
+                quantity = right.number_input("수량", 1, max(1, available), key=f"qty-{book['id']}", disabled=available == 0)
+                if right.button("대여 요청", key=f"borrow-{book['id']}", type="primary", disabled=available == 0):
+                    run(lambda b=int(book["id"]), q=int(quantity): service.create_borrow_request(actor_id, b, q), "대여 요청이 완료되었습니다.")
+                if available == 0:
+                    right.warning("대여 가능한 수량이 없습니다.")
             elif not actor:
                 right.caption("로그인 후 대여할 수 있습니다.")
 
@@ -120,10 +169,13 @@ elif page == "로그인":
         try:
             result = service.authenticate(military_id, password)
             if isinstance(result, dict):
+                token = sessions.create(result)
                 st.session_state.user = result
-                st.session_state.flash = "로그인되었습니다."
+                st.session_state.session_token = token
+                st.session_state.flash = "로그인되었습니다. 15분 동안 로그인 상태가 유지됩니다."
                 go_to("책 둘러보기")
-                st.rerun()
+                set_browser_cookie(token)
+                st.stop()
             elif result.error == "ACCOUNT_NOT_FOUND":
                 st.toast("존재하지 않는 계정입니다.")
                 st.error("존재하지 않는 계정입니다.")
@@ -297,3 +349,89 @@ elif page == "사용자 관리":
         submitted = st.form_submit_button("사용자 추가", type="primary")
     if submitted:
         run(lambda: service.admin_create_user(actor_id, name, military_id, password, password_confirmation), "일반 사용자를 추가했습니다.")
+
+elif page == "데이터 관리":
+    if role != "ADMIN":
+        st.error("권한이 없습니다.")
+    else:
+        st.title("데이터 관리")
+        st.caption(f"현재 데이터 디렉터리: {DATA_DIR}")
+        labels = {
+            "사용자 관리": "users", "도서 관리": "books", "대여 요청 관리": "borrow_requests",
+            "대출 관리": "loans", "관리자 로그 보기": "admin_logs",
+        }
+        section = st.radio("관리 대상", list(labels), horizontal=True, key="data-management-section")
+        table = labels[section]
+        try:
+            rows = admin_data.read_table(actor, table)
+            frame = pd.DataFrame(rows, columns=SCHEMAS[table])
+            if table == "admin_logs":
+                st.info("관리자 로그는 데이터 무결성을 위해 조회 전용입니다.")
+                st.dataframe(frame, use_container_width=True, hide_index=True)
+            else:
+                st.caption("행을 추가·수정하거나 왼쪽 행 메뉴로 삭제한 뒤 미리보기와 저장을 진행하세요.")
+                disabled = ["password_hash"] if table == "users" else []
+                edited = st.data_editor(frame, num_rows="fixed" if table == "users" else "dynamic", disabled=disabled, use_container_width=True, hide_index=True, key=f"editor-{table}")
+                before_ids = set(frame.get("id", pd.Series(dtype=str)).astype(str))
+                after_ids = set(edited.get("id", pd.Series(dtype=str)).astype(str))
+                deleted = before_ids - after_ids
+                if deleted:
+                    st.warning(f"삭제 예정 ID: {', '.join(sorted(deleted))}")
+                    confirmed = st.checkbox("정말 삭제하시겠습니까?", key=f"delete-confirm-{table}")
+                else:
+                    confirmed = True
+                preview, save, refresh = st.columns(3)
+                if preview.button("저장 전 미리보기", use_container_width=True):
+                    st.session_state[f"preview-{table}"] = edited.to_dict("records")
+                if save.button("저장", type="primary", use_container_width=True):
+                    if not confirmed:
+                        st.error("삭제하려면 확인 절차를 완료해주세요.")
+                    else:
+                        try:
+                            backup = admin_data.save_table(actor, table, edited.to_dict("records"))
+                            st.session_state.flash = f"저장되었습니다. 백업: {backup.name}"
+                            st.rerun()
+                        except BookRentalError as error:
+                            st.error(str(error))
+                if refresh.button("변경 취소 / 새로고침", use_container_width=True):
+                    st.session_state.pop(f"preview-{table}", None)
+                    st.rerun()
+                if preview_rows := st.session_state.get(f"preview-{table}"):
+                    st.subheader("저장 전 미리보기")
+                    st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
+                if table == "users":
+                    st.divider()
+                    st.subheader("새 사용자 추가")
+                    with st.form("data-user-create"):
+                        create_name = st.text_input("이름")
+                        create_military_id = st.text_input("군번")
+                        create_role = st.selectbox("역할", ["USER", "ADMIN"])
+                        create_password = st.text_input("초기 비밀번호", type="password")
+                        create_password_confirmation = st.text_input("초기 비밀번호 확인", type="password")
+                        create_submitted = st.form_submit_button("사용자 추가", type="primary")
+                    if create_submitted:
+                        if create_password != create_password_confirmation:
+                            st.error("비밀번호가 일치하지 않습니다.")
+                        else:
+                            try:
+                                admin_data.create_user(actor, create_name, create_military_id, create_password, create_role)
+                                st.session_state.flash = "사용자가 추가되었습니다."
+                                st.rerun()
+                            except BookRentalError as error:
+                                st.error(str(error))
+                    st.divider()
+                    st.subheader("비밀번호 재설정")
+                    user_id = st.number_input("사용자 ID", min_value=1, step=1)
+                    new_password = st.text_input("새 비밀번호", type="password")
+                    confirm_password = st.text_input("새 비밀번호 확인", type="password")
+                    if st.button("비밀번호 재설정"):
+                        if new_password != confirm_password:
+                            st.error("비밀번호가 일치하지 않습니다.")
+                        else:
+                            try:
+                                admin_data.reset_password(actor, int(user_id), new_password)
+                                st.success("비밀번호가 안전하게 재설정되었습니다.")
+                            except BookRentalError as error:
+                                st.error(str(error))
+        except BookRentalError as error:
+            st.error(str(error))
