@@ -13,6 +13,7 @@ from book_rental.store import CsvStore
 st.set_page_config(page_title="BookBridge", page_icon="📚", layout="wide")
 
 LOGGER = logging.getLogger("bookbridge")
+LOGGER.setLevel(logging.INFO)
 DATA_DIR = get_data_dir()
 LOGGER.info("BookBridge data directory: %s", DATA_DIR)
 service = BookRentalService(CsvStore(DATA_DIR))
@@ -186,23 +187,47 @@ elif page == "내 대여":
 
 elif page == "책 등록":
     st.title("책 등록")
-    with st.form("book-form"):
-        title = st.text_input("제목")
-        author = st.text_input("저자")
-        category = st.text_input("카테고리")
-        description = st.text_area("설명")
-        book_format = st.selectbox("형식", ["PHYSICAL_BOOK", "PDF"], format_func=lambda value: "실물 도서" if value == "PHYSICAL_BOOK" else "PDF")
-        total_quantity = st.number_input("총 수량", 1, 100, 1)
-        loan_days = st.number_input("기본 대여 기간(일)", 1, 365, 14)
-        upload = st.file_uploader("PDF 파일", type=["pdf"], disabled=book_format != "PDF")
-        submitted = st.form_submit_button("승인 요청", type="primary")
-    if submitted:
-        uploaded = (upload.name, upload.getvalue()) if upload else None
-        run(lambda: service.create_book(
-            actor_id, title=title, author=author, category=category, description=description,
-            book_format=book_format, total_quantity=int(total_quantity),
-            default_loan_days=int(loan_days), uploaded_file=uploaded,
-        ), "책을 등록했습니다. 관리자 승인을 기다려 주세요.")
+    registration_completed = st.session_state.get("book_registration_completed", False)
+    if registration_completed:
+        if st.session_state.pop("book_registration_toast_pending", False):
+            st.toast("등록 신청이 완료되었습니다.")
+        st.success("등록 신청이 완료되었습니다.")
+        st.write("관리자 승인 후 대여 가능한 도서 목록에 표시됩니다.")
+        if st.button("확인", type="primary", key="book-registration-confirm"):
+            st.session_state.pop("book_registration_completed", None)
+            go_to("내 등록 도서")
+            st.rerun()
+    else:
+        with st.form("book-form", clear_on_submit=False):
+            title = st.text_input("제목")
+            author = st.text_input("저자")
+            category = st.text_input("카테고리")
+            description = st.text_area("설명")
+            book_format = st.selectbox("형식", ["PHYSICAL_BOOK", "PDF"], format_func=lambda value: "실물 도서" if value == "PHYSICAL_BOOK" else "PDF")
+            total_quantity = st.number_input("총 수량", 1, 100, 1)
+            loan_days = st.number_input("기본 대여 기간(일)", 1, 365, 14)
+            upload = st.file_uploader("PDF 파일", type=["pdf"])
+            st.caption("PDF 형식으로 등록할 때는 PDF 파일을 반드시 첨부해주세요.")
+            submitted = st.form_submit_button("승인 요청", type="primary")
+        if submitted:
+            if book_format == "PDF" and upload is None:
+                st.error("PDF 파일을 업로드해주세요.")
+            else:
+                uploaded = (upload.name, upload.getvalue()) if book_format == "PDF" and upload else None
+                try:
+                    service.create_book(
+                        actor_id, title=title, author=author, category=category, description=description,
+                        book_format=book_format, total_quantity=int(total_quantity),
+                        default_loan_days=int(loan_days), uploaded_file=uploaded,
+                    )
+                    st.session_state.book_registration_completed = True
+                    st.session_state.book_registration_toast_pending = True
+                    st.rerun()
+                except BookRentalError as error:
+                    st.error(str(error))
+                except Exception:
+                    LOGGER.exception("Book registration failed unexpectedly")
+                    st.error("책 등록 처리 중 오류가 발생했습니다.")
 
 elif page == "내 등록 도서":
     st.title("내 등록 도서")
