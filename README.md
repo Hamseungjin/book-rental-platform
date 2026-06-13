@@ -288,3 +288,32 @@ python3 -m book_rental.admin_command_runner debug-login --military-id 333
 - 입력한 비밀번호 검증 성공/실패
 
 비밀번호 원문과 전체 `password_hash`는 출력하지 않습니다. CLI 검증 성공 후 `http://13.209.30.31/`에서 군번 `333`으로 로그인하고, 새로고침 후 15분 이내 로그인 유지와 로그아웃을 차례로 확인하세요.
+
+### `LoginResult` ImportError 배포 복구
+
+다음 오류는 `book_rental/login.py`만 새 버전이고 `book_rental/service.py`는 이전 버전인 부분 배포에서 발생합니다.
+
+```text
+ImportError: cannot import name 'LoginResult' from 'book_rental.service'
+```
+
+현재 `login.py`는 더 이상 `service.LoginResult`를 import하지 않습니다. 이전 서비스의 성공 `dict`/실패 `error` 객체와 현재 서비스의 `status`/`user` 객체를 모두 내부 호환 결과로 정규화합니다. 따라서 이 ImportError 때문에 Streamlit 앱 전체가 시작되지 않는 문제를 방지합니다.
+
+배포 시에는 파일을 개별 복사하지 말고 같은 Git 커밋 전체를 반영한 뒤 서비스를 재시작하세요.
+
+```bash
+cd /opt/bookbridge/app
+git fetch --all
+git checkout <배포-브랜치>
+git pull --ff-only
+/opt/bookbridge/app/.venv/bin/python -m compileall -q app.py book_rental
+sudo systemctl restart <streamlit-service-name>
+sudo journalctl -u <streamlit-service-name> -n 100 --no-pager
+```
+
+실제 배포 파일에서 의존성이 제거되었는지는 다음 명령으로 확인할 수 있습니다.
+
+```bash
+cd /opt/bookbridge/app
+/opt/bookbridge/app/.venv/bin/python -c "from book_rental.login import attempt_login; print('login import OK')"
+```

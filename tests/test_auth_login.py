@@ -47,3 +47,43 @@ def test_production_style_urlsafe_base64_hash_format_is_accepted():
     encoded = "pbkdf2_sha256$600000$Qd9pmg6TdfizwZjGPAxUvg==$04dtKCXx8SZGDYei2Z6OB_x_KpSwTg9_YjcDdyHJ28k="
     from book_rental.auth import is_password_hash_valid
     assert is_password_hash_valid(encoded) is True
+
+
+def test_login_module_accepts_legacy_success_dict_without_importing_service_result(tmp_path):
+    store = CsvStore(tmp_path / "data")
+    sessions = SessionService(store)
+
+    class LegacyService:
+        def __init__(self):
+            self.store = store
+
+        def authenticate(self, military_id, password):
+            return {
+                "id": 4, "name": "엄준식", "military_id": 333, "role": "USER",
+                "active": "true", "created_at": "", "updated_at": "", "password_hash": "secret",
+            }
+
+    attempt = attempt_login(LegacyService(), sessions, "333", "password", logging.getLogger("legacy"))
+
+    assert attempt.result.succeeded is True
+    assert attempt.result.user["id"] == "4"
+    assert attempt.result.user["military_id"] == "333"
+    assert attempt.result.user["active"] is True
+    assert "password_hash" not in attempt.result.user
+    assert attempt.token
+
+
+def test_login_module_accepts_legacy_failure_object(tmp_path):
+    store = CsvStore(tmp_path / "data")
+
+    class LegacyFailure:
+        error = "INVALID_PASSWORD"
+
+    class LegacyService:
+        def authenticate(self, military_id, password):
+            return LegacyFailure()
+
+    attempt = attempt_login(LegacyService(), SessionService(store), "333", "wrong", logging.getLogger("legacy"))
+
+    assert attempt.result.status == "INVALID_PASSWORD"
+    assert attempt.result.succeeded is False
