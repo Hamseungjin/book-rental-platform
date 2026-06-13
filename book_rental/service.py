@@ -129,7 +129,7 @@ class BookRentalService:
         if book_format not in {"PHYSICAL_BOOK", "PDF"}:
             raise ValidationError("지원하지 않는 책 형식입니다.")
         if book_format == "PDF" and uploaded_file is None:
-            raise ValidationError("PDF 책은 PDF 파일을 첨부해야 합니다.")
+            raise ValidationError("PDF 파일을 업로드해주세요.")
         if uploaded_file and not uploaded_file[0].lower().endswith(".pdf"):
             raise ValidationError("PDF 파일만 업로드할 수 있습니다.")
 

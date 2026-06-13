@@ -177,7 +177,7 @@ def test_returned_pdf_is_no_longer_downloadable(service):
 
 
 def test_pdf_requires_a_pdf_upload(service):
-    with pytest.raises(ValidationError, match="PDF 파일을 첨부"):
+    with pytest.raises(ValidationError, match="PDF 파일을 업로드해주세요"):
         service.create_book(
             service.member_id, title="전자책", author="작가", category="에세이", description="",
             book_format="PDF", total_quantity=1, default_loan_days=7,

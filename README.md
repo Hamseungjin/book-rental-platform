@@ -49,6 +49,39 @@ streamlit run /opt/bookbridge/app/app.py
 
 현재 사용 중인 절대 경로는 애플리케이션 시작 로그와 관리자 대시보드 상단에서 확인할 수 있습니다.
 
+### systemd 배포 설정 및 확인
+
+Streamlit을 systemd로 실행한다면 셸에서 `export`한 값은 서비스에 자동으로 전달되지 않습니다. 서비스 unit 또는 `EnvironmentFile`에 앱과 관리자 명령이 공유할 데이터 경로를 명시하세요.
+
+```ini
+[Service]
+WorkingDirectory=/opt/bookbridge/app
+Environment="BOOKBRIDGE_DATA_DIR=/opt/bookbridge/app/data"
+Environment="BOOKBRIDGE_ADMIN_ID=admin"
+Environment="BOOKBRIDGE_ADMIN_NAME=관리자"
+# 비밀번호는 예시처럼 unit에 직접 기록하기보다 권한이 제한된 EnvironmentFile 또는 비밀 관리 도구로 전달하세요.
+EnvironmentFile=/etc/bookbridge/bookbridge.env
+ExecStart=/usr/local/bin/streamlit run /opt/bookbridge/app/app.py --server.address=0.0.0.0 --server.port=80
+```
+
+예를 들어 `/etc/bookbridge/bookbridge.env`는 서비스 계정만 읽을 수 있게 만들고 다음 값을 넣습니다.
+
+```bash
+BOOKBRIDGE_ADMIN_PASSWORD=안전한-비밀번호
+```
+
+설정과 실제 전달 값을 확인하는 명령은 다음과 같습니다.
+
+```bash
+systemctl cat <서비스명>
+systemctl show <서비스명> -p Environment -p EnvironmentFiles -p ExecStart -p WorkingDirectory
+systemctl daemon-reload
+systemctl restart <서비스명>
+journalctl -u <서비스명> -n 100 --no-pager
+```
+
+`/opt/bookbridge/data`를 사용하던 기존 배포를 `/opt/bookbridge/app/data`로 통합할 때는 먼저 서비스를 중지하고 두 디렉터리를 모두 백업한 다음, 운영 기준 CSV와 `uploads/`를 새 경로로 옮기세요. 파일 소유권을 Streamlit 서비스 계정에 맞춘 뒤 `BOOKBRIDGE_DATA_DIR`를 변경하고 서비스를 재시작해야 합니다. 두 디렉터리의 CSV를 단순 덮어쓰기하면 신규 사용자나 도서 데이터가 유실될 수 있으므로 반드시 내용을 비교하고 병합하세요.
+
 ## 관리자 계정 생성
 
 관리자는 일반 회원가입 화면에서 만들 수 없습니다. 관리자 비밀번호는 소스 코드에 넣지 말고 명령행 인자 또는 환경변수로 전달하세요.
@@ -114,11 +147,14 @@ pytest -q
 
 1. 빈 데이터 디렉터리로 앱을 실행하고 초기 화면에 사용자 선택 드롭다운 없이 `BookBridge`, 회원가입/로그인 버튼, 승인 도서 목록이 표시되는지 확인합니다.
 2. 일반 회원가입 후 군번과 비밀번호로 로그인하고 사이드바에 이름/군번과 로그아웃 버튼이 표시되는지 확인합니다.
-3. 동일한 일반 계정으로 책을 등록하고, 관리자가 승인한 다른 책에 대여 요청을 보낼 수 있는지 확인합니다.
-4. 관리자 계정으로 로그인해 도서 승인, 대여 승인, 전체 대출, 사용자 관리 메뉴만 노출되는지 확인합니다.
-5. PDF 책의 대여를 승인한 뒤 해당 회원의 `내 대여`에 다운로드 버튼이 나타나는지 확인합니다.
-6. 다른 일반 회원은 해당 PDF를 받을 수 없고, 반납 완료 후 기존 대여자도 다운로드할 수 없는지 확인합니다.
-7. 로그아웃 후 보호된 메뉴가 사라지고 승인 도서 목록은 계속 조회되는지 확인합니다.
+3. `책 등록`에 처음 진입하자마자 PDF 업로드 버튼이 활성화되어 있고 PDF 파일만 선택 가능한지 확인합니다.
+4. 형식을 PDF로 선택하고 파일 없이 `승인 요청`을 눌러 `PDF 파일을 업로드해주세요.`가 표시되며 신청이 생성되지 않는지 확인합니다.
+5. PDF를 첨부해 등록하고 `등록 신청이 완료되었습니다.` 메시지와 `확인` 버튼이 표시되는지 확인합니다.
+6. `확인`을 누르면 `내 등록 도서`로 이동하며 방금 등록한 도서가 `PENDING` 상태로 한 번만 표시되는지 확인합니다.
+7. 관리자 계정으로 로그인해 도서 승인, 대여 승인, 전체 대출, 사용자 관리 메뉴만 노출되는지 확인합니다.
+8. PDF 책의 대여를 승인한 뒤 해당 회원의 `내 대여`에 다운로드 버튼이 나타나는지 확인합니다.
+9. 다른 일반 회원은 해당 PDF를 받을 수 없고, 반납 완료 후 기존 대여자도 다운로드할 수 없는지 확인합니다.
+10. 로그아웃 후 보호된 메뉴가 사라지고 승인 도서 목록은 계속 조회되는지 확인합니다.
 
 ## 구조
 
