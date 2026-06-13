@@ -70,20 +70,21 @@ def test_password_confirmation_mismatch_fails(tmp_path):
 def test_login_succeeds_without_exposing_password_hash(service):
     result = service.authenticate("25-12345678", "member1234")
 
-    assert result["name"] == "홍승진"
-    assert "password_hash" not in result
+    assert result.succeeded is True
+    assert result.user["name"] == "홍승진"
+    assert "password_hash" not in result.user
 
 
 def test_login_with_wrong_password_fails_without_exception(service):
     result = service.authenticate("25-12345678", "wrong-password")
 
-    assert result.error == "INVALID_PASSWORD"
+    assert result.status == "INVALID_PASSWORD"
 
 
 def test_login_with_unknown_military_id_fails_without_exception(service):
     result = service.authenticate("not-a-member", "member1234")
 
-    assert result.error == "ACCOUNT_NOT_FOUND"
+    assert result.status == "ACCOUNT_NOT_FOUND"
 
 
 def test_regular_user_cannot_access_admin_features(service):
@@ -101,7 +102,7 @@ def test_admin_can_add_a_regular_user(service):
     )
 
     assert user["role"] == "USER"
-    assert service.authenticate("26-00000002", "temporary1")["id"] == user["id"]
+    assert service.authenticate("26-00000002", "temporary1").user["id"] == user["id"]
 
 
 def test_regular_user_can_register_and_borrow_books(service):
@@ -258,3 +259,43 @@ def test_admin_runner_data_dir_argument_overrides_environment(tmp_path, monkeypa
     monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(environment_dir))
 
     assert resolve_data_dir(str(command_dir)) == command_dir.resolve()
+
+
+def test_duplicate_active_loan_is_rejected(service):
+    book = create_approved_book(service, quantity=2)
+    request = service.create_borrow_request(service.member_id, int(book["id"]), 1)
+    service.approve_request(service.admin_id, int(request["id"]))
+
+    with pytest.raises(ValidationError, match="중복 대여"):
+        service.create_borrow_request(service.member_id, int(book["id"]), 1)
+
+
+def test_numeric_military_id_and_true_active_string_authenticate(tmp_path):
+    store = CsvStore(tmp_path / "data")
+    service = BookRentalService(store, clock=lambda: NOW)
+    user = service.register_user("엄준식", "333", "password333", "password333")
+    rows = store.read("users")
+    rows[0]["active"] = "True"
+    store.write("users", rows)
+
+    result = service.authenticate(333, "password333")
+
+    assert result.succeeded is True
+    assert result.user == {
+        "id": user["id"], "name": "엄준식", "military_id": "333", "role": "USER",
+        "active": True, "created_at": user["created_at"], "updated_at": user["updated_at"],
+    }
+
+
+def test_authenticate_reads_users_from_bookbridge_data_dir(tmp_path, monkeypatch):
+    configured = tmp_path / "production-data"
+    monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(configured))
+    writer = BookRentalService(CsvStore())
+    writer.register_user("운영 사용자", "333", "password333", "password333")
+
+    reader = BookRentalService(CsvStore())
+    result = reader.authenticate("333", "password333")
+
+    assert reader.store.path("users") == configured.resolve() / "users.csv"
+    assert result.succeeded is True
+    assert result.user["name"] == "운영 사용자"
