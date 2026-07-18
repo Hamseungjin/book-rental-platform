@@ -8,9 +8,17 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-import fcntl
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - exercised on Windows
+    fcntl = None
+    import msvcrt
 
 from .config import get_data_dir
+
+BOOK_FORMAT_PHYSICAL = "PHYSICAL_BOOK"
+BOOK_FORMAT_PDF = "PDF"
+BOOK_FORMATS = {BOOK_FORMAT_PHYSICAL, BOOK_FORMAT_PDF}
 
 SCHEMAS: dict[str, list[str]] = {
     "users": [
@@ -38,6 +46,9 @@ SCHEMAS: dict[str, list[str]] = {
         "token_hash", "user_id", "military_id", "role", "created_at", "expires_at",
         "revoked_at", "last_seen_at",
     ],
+    "pdf_access_logs": [
+        "id", "user_id", "book_id", "accessed_at",
+    ],
 }
 
 
@@ -54,12 +65,17 @@ class CsvStore:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.lock_path.touch(exist_ok=True)
-        for table, fields in SCHEMAS.items():
-            path = self.path(table)
-            if not path.exists():
-                self._write_file(path, fields, [])
-            else:
-                self._migrate_file(table, path, fields)
+        with self.lock_path.open("r+") as lock_file:
+            self._lock(lock_file)
+            try:
+                for table, fields in SCHEMAS.items():
+                    path = self.path(table)
+                    if not path.exists():
+                        self._write_file(path, fields, [])
+                    else:
+                        self._migrate_file(table, path, fields)
+            finally:
+                self._unlock(lock_file)
 
     def _migrate_file(self, table: str, path: Path, fields: list[str]) -> None:
         with path.open(encoding="utf-8", newline="") as file:
@@ -139,7 +155,7 @@ class CsvStore:
     def transaction(self) -> Iterator["CsvStore"]:
         """Serialize mutations and restore every CSV if a mutation fails."""
         with self.lock_path.open("r+") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            self._lock(lock_file)
             backup_dir = Path(tempfile.mkdtemp(prefix="bookbridge-backup-"))
             try:
                 for table in SCHEMAS:
@@ -151,7 +167,23 @@ class CsvStore:
                 raise
             finally:
                 shutil.rmtree(backup_dir, ignore_errors=True)
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                self._unlock(lock_file)
+
+    @staticmethod
+    def _lock(file) -> None:
+        if fcntl is not None:
+            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+        else:  # pragma: no cover - exercised on Windows
+            file.seek(0)
+            msvcrt.locking(file.fileno(), msvcrt.LK_LOCK, 1)
+
+    @staticmethod
+    def _unlock(file) -> None:
+        if fcntl is not None:
+            fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+        else:  # pragma: no cover - exercised on Windows
+            file.seek(0)
+            msvcrt.locking(file.fileno(), msvcrt.LK_UNLCK, 1)
 
     @staticmethod
     def _write_file(path: Path, fields: list[str], rows: list[dict[str, object]]) -> None:

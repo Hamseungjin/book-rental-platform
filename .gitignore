@@ -1,14 +1,46 @@
-# Gradle / Java build output
-.gradle/
-build/
-out/
-target/
-*.class
-*.jar
-*.war
-*.ear
+# Python bytecode and caches
 
-# Packaged archives and native/executable binaries
+**pycache**/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+
+.venv/
+venv/
+env/
+ENV/
+
+# Streamlit secrets
+
+.streamlit/secrets.toml
+
+# Local app data
+
+data/*
+!data/.gitkeep
+
+# Logs and local environment files
+
+*.log
+.env
+.env.*
+!.env.example
+
+# Build and package outputs
+
+build/
+dist/
+*.egg-info/
+*.whl
+
+# Packaged archives and binaries
+
 *.zip
 *.tar
 *.tar.gz
@@ -22,27 +54,9 @@ target/
 *.dylib
 
 # IDE / OS metadata
+
 .idea/
 .vscode/
 *.iml
 .DS_Store
 Thumbs.db
-
-# Logs and local environment files
-*.log
-.env
-.env.*
-!.env.example
-
-# Frontend dependencies and Vite output
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-*.tsbuildinfo
-
-# Python / Streamlit
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-.streamlit/secrets.toml

@@ -8,10 +8,10 @@ from typing import Callable
 
 from .auth import hash_password
 from .errors import AuthorizationError, ValidationError
-from .store import SCHEMAS, CsvStore
+from .store import BOOK_FORMAT_PDF, BOOK_FORMAT_PHYSICAL, BOOK_FORMATS, SCHEMAS, CsvStore
 
 EDITABLE_TABLES = {"users", "books", "borrow_requests", "loans"}
-MANAGED_TABLES = EDITABLE_TABLES | {"admin_logs"}
+MANAGED_TABLES = EDITABLE_TABLES | {"admin_logs", "pdf_access_logs"}
 ALLOWED_STATUSES = {
     "borrow_requests": {"REQUESTED", "APPROVED", "REJECTED", "CANCELED"},
     "loans": {"LOANED", "OVERDUE", "RETURNED"},
@@ -36,10 +36,13 @@ class AdminDataService:
     def save_table(self, actor: dict[str, object], table: str, rows: list[dict[str, object]]) -> Path:
         self._require_admin(actor)
         if table not in EDITABLE_TABLES:
-            raise AuthorizationError("관리자 로그는 조회 전용입니다.")
+            raise AuthorizationError("관리자 로그와 PDF 이용 기록은 조회 전용입니다.")
         normalized = self._normalize_and_validate(table, rows)
+        self._validate_references(table, normalized)
         with self.store.transaction():
             before = self.store.read(table)
+            if table == "books":
+                self._reject_dangerous_format_changes(before, normalized)
             if table == "users":
                 old_hashes = {row["id"]: row["password_hash"] for row in before}
                 for row in normalized:
@@ -115,16 +118,61 @@ class AdminDataService:
                 raise ValidationError("사용자 role은 USER 또는 ADMIN만 가능합니다.")
         if table == "books":
             for row in normalized:
-                try:
-                    total, available = int(row["total_quantity"]), int(row["available_quantity"])
-                except ValueError as exc:
-                    raise ValidationError("도서 수량은 정수여야 합니다.") from exc
-                if total < 0 or available < 0 or available > total:
-                    raise ValidationError("도서 수량은 음수가 될 수 없고 대여 가능 수량은 총 수량을 초과할 수 없습니다.")
+                if row["format"] not in BOOK_FORMATS:
+                    raise ValidationError("도서 format은 PHYSICAL_BOOK 또는 PDF만 가능합니다.")
+                if row["format"] == BOOK_FORMAT_PHYSICAL:
+                    try:
+                        total = int(row["total_quantity"])
+                        available = int(row["available_quantity"])
+                        loan_days = int(row["default_loan_days"])
+                    except ValueError as exc:
+                        raise ValidationError("실물 도서 수량과 대여 기간은 정수여야 합니다.") from exc
+                    if total < 1:
+                        raise ValidationError("실물 도서 총수량은 1 이상이어야 합니다.")
+                    if available < 0 or available > total:
+                        raise ValidationError("실물 도서 대여 가능 수량은 0 이상이고 총 수량을 초과할 수 없습니다.")
+                    if loan_days < 1:
+                        raise ValidationError("실물 도서 기본 대여 기간은 1일 이상이어야 합니다.")
+                if row["format"] == BOOK_FORMAT_PDF:
+                    self._validate_pdf_row(row)
         if table in ALLOWED_STATUSES and any(row["status"] not in ALLOWED_STATUSES[table] for row in normalized):
             allowed = ", ".join(sorted(ALLOWED_STATUSES[table]))
             raise ValidationError(f"{table}.csv의 status는 다음 값만 가능합니다: {allowed}")
         return normalized
+
+    def _validate_references(self, table: str, rows: list[dict[str, str]]) -> None:
+        if table not in {"borrow_requests", "loans"}:
+            return
+        books = {row["id"]: row for row in self.store.read("books")}
+        for row in rows:
+            book = books.get(row["book_id"])
+            if book is None:
+                raise ValidationError(f"{table}.csv가 존재하지 않는 book_id를 참조합니다: {row['book_id']}")
+            if book["format"] != BOOK_FORMAT_PHYSICAL:
+                raise ValidationError(f"{table}.csv는 실물 도서만 참조할 수 있습니다.")
+
+    def _reject_dangerous_format_changes(self, before: list[dict[str, str]], after: list[dict[str, str]]) -> None:
+        before_by_id = {row["id"]: row for row in before}
+        referenced_book_ids = {row["book_id"] for row in self.store.read("borrow_requests")} | {
+            row["book_id"] for row in self.store.read("loans")
+        }
+        for row in after:
+            old = before_by_id.get(row["id"])
+            if old and old.get("format") != row.get("format") and row["id"] in referenced_book_ids:
+                raise ValidationError("요청 또는 대출 기록이 있는 도서의 형식은 변경할 수 없습니다.")
+
+    def _validate_pdf_row(self, row: dict[str, str]) -> None:
+        if not row["file_path"]:
+            raise ValidationError("PDF 자료는 file_path가 필요합니다.")
+        upload_root = self.store.upload_dir.resolve()
+        try:
+            path = Path(row["file_path"]).expanduser().resolve()
+        except OSError as exc:
+            raise ValidationError("PDF file_path가 올바르지 않습니다.") from exc
+        if not path.is_relative_to(upload_root):
+            raise ValidationError("PDF file_path는 업로드 디렉터리 내부여야 합니다.")
+        if not path.is_file():
+            raise ValidationError("PDF 파일을 찾을 수 없습니다.")
 
     def _backup(self, table: str) -> Path:
         backup_dir = self.store.data_dir / "backups"

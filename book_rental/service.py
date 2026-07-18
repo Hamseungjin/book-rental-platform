@@ -3,14 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 from typing import Callable
 from uuid import uuid4
 
 from .auth import hash_password, verify_password
 from .errors import AuthorizationError, NotFoundError, ValidationError
-from .store import CsvStore
+from .store import BOOK_FORMAT_PDF, BOOK_FORMAT_PHYSICAL, BOOK_FORMATS, CsvStore
 
 Clock = Callable[[], datetime]
+MAX_PDF_BYTES = 20 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,14 @@ def parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
+def is_physical_book(book: dict[str, str]) -> bool:
+    return book.get("format") == BOOK_FORMAT_PHYSICAL
+
+
+def is_pdf_resource(book: dict[str, str]) -> bool:
+    return book.get("format") == BOOK_FORMAT_PDF
+
+
 class BookRentalService:
     def __init__(self, store: CsvStore, clock: Clock = utc_now) -> None:
         self.store = store
@@ -51,15 +61,21 @@ class BookRentalService:
 
     def create_admin(self, name: str, military_id: str, password: str) -> tuple[dict[str, str], bool]:
         name, military_id = name.strip(), military_id.strip()
-        existing = next(
-            (row for row in self.store.read("users") if row["military_id"].casefold() == military_id.casefold()),
-            None,
-        )
-        if existing:
-            if existing["role"] == "ADMIN":
-                return existing, False
-            raise ValidationError("이미 사용 중인 군번입니다.")
-        return self._create_user(name, military_id, password, password, "ADMIN"), True
+        self._validate_user_input(name, military_id, password, password)
+        with self.store.transaction():
+            users = self.store.read("users")
+            existing = next(
+                (row for row in users if row["military_id"].casefold() == military_id.casefold()),
+                None,
+            )
+            if existing:
+                if existing["role"] == "ADMIN":
+                    return existing, False
+                raise ValidationError("이미 사용 중인 군번입니다.")
+            user = self._build_user(users, name, military_id, password, "ADMIN")
+            users.append(user)
+            self.store.write("users", users)
+            return user, True
 
     def admin_create_user(
         self, admin_id: int, name: str, military_id: str, password: str, password_confirmation: str,
@@ -71,25 +87,35 @@ class BookRentalService:
         self, name: str, military_id: str, password: str, password_confirmation: str, role: str,
     ) -> dict[str, str]:
         name, military_id = name.strip(), military_id.strip()
+        self._validate_user_input(name, military_id, password, password_confirmation)
+        with self.store.transaction():
+            users = self.store.read("users")
+            if any(row["military_id"].casefold() == military_id.casefold() for row in users if row["military_id"]):
+                raise ValidationError("이미 가입된 군번입니다.")
+            user = self._build_user(users, name, military_id, password, role)
+            users.append(user)
+            self.store.write("users", users)
+            return user
+
+    def _validate_user_input(
+        self, name: str, military_id: str, password: str, password_confirmation: str,
+    ) -> None:
         if not name or not military_id:
             raise ValidationError("이름과 군번을 입력해 주세요.")
         if password != password_confirmation:
             raise ValidationError("비밀번호가 일치하지 않습니다.")
         if len(password) < 8:
             raise ValidationError("비밀번호는 8자 이상이어야 합니다.")
-        with self.store.transaction():
-            users = self.store.read("users")
-            if any(row["military_id"].casefold() == military_id.casefold() for row in users if row["military_id"]):
-                raise ValidationError("이미 가입된 군번입니다.")
-            now = iso(self.clock())
-            user = {
-                "id": str(self.store.next_id(users)), "name": name, "military_id": military_id,
-                "password_hash": hash_password(password), "role": role, "active": "true",
-                "created_at": now, "updated_at": now,
-            }
-            users.append(user)
-            self.store.write("users", users)
-            return user
+
+    def _build_user(
+        self, users: list[dict[str, str]], name: str, military_id: str, password: str, role: str,
+    ) -> dict[str, str]:
+        now = iso(self.clock())
+        return {
+            "id": str(self.store.next_id(users)), "name": name, "military_id": military_id,
+            "password_hash": hash_password(password), "role": role, "active": "true",
+            "created_at": now, "updated_at": now,
+        }
 
     def authenticate(self, military_id: str, password: str) -> LoginResult:
         """Return an explicit result for expected failures; malformed hashes still raise."""
@@ -129,29 +155,34 @@ class BookRentalService:
 
     def create_book(
         self, lender_id: int, *, title: str, author: str, category: str, description: str,
-        book_format: str, total_quantity: int, default_loan_days: int,
+        book_format: str, total_quantity: int | None = None, default_loan_days: int | None = None,
         uploaded_file: tuple[str, bytes] | None = None,
     ) -> dict[str, str]:
         self.require_role(lender_id, "USER")
         title, author, category = title.strip(), author.strip(), category.strip()
         if not title or not author or not category:
             raise ValidationError("제목, 저자, 카테고리는 필수입니다.")
-        if total_quantity < 1 or default_loan_days < 1:
-            raise ValidationError("수량과 대여 기간은 1 이상이어야 합니다.")
-        if book_format not in {"PHYSICAL_BOOK", "PDF"}:
+        if book_format not in BOOK_FORMATS:
             raise ValidationError("지원하지 않는 책 형식입니다.")
-        if book_format == "PDF" and uploaded_file is None:
-            raise ValidationError("PDF 파일을 업로드해주세요.")
-        if uploaded_file and not uploaded_file[0].lower().endswith(".pdf"):
-            raise ValidationError("PDF 파일만 업로드할 수 있습니다.")
+        if book_format == BOOK_FORMAT_PHYSICAL:
+            if total_quantity is None or default_loan_days is None:
+                raise ValidationError("실물 도서는 수량과 대여 기간을 입력해야 합니다.")
+            if total_quantity < 1 or default_loan_days < 1:
+                raise ValidationError("수량과 대여 기간은 1 이상이어야 합니다.")
+            if uploaded_file is not None:
+                raise ValidationError("실물 도서에는 PDF 파일을 업로드할 수 없습니다.")
+        else:
+            self._validate_pdf_upload(uploaded_file)
 
+        stored_path = ""
+        destination: Path | None = None
         with self.store.transaction():
             books = self.store.read("books")
             book_id = self.store.next_id(books)
             file_name = ""
-            stored_path = ""
-            if uploaded_file:
+            if book_format == BOOK_FORMAT_PDF and uploaded_file:
                 file_name, content = uploaded_file
+                file_name = self._safe_pdf_filename(file_name)
                 destination = self.store.upload_dir / f"{book_id}-{uuid4().hex}.pdf"
                 destination.write_bytes(content)
                 stored_path = str(destination)
@@ -159,14 +190,21 @@ class BookRentalService:
             book = {
                 "id": str(book_id), "lender_id": str(lender_id), "title": title,
                 "author": author, "category": category, "description": description.strip(),
-                "format": book_format, "total_quantity": str(total_quantity),
-                "available_quantity": str(total_quantity), "default_loan_days": str(default_loan_days),
+                "format": book_format,
+                "total_quantity": str(total_quantity) if book_format == BOOK_FORMAT_PHYSICAL else "",
+                "available_quantity": str(total_quantity) if book_format == BOOK_FORMAT_PHYSICAL else "",
+                "default_loan_days": str(default_loan_days) if book_format == BOOK_FORMAT_PHYSICAL else "",
                 "status": "PENDING", "rejection_memo": "", "file_name": file_name,
                 "file_path": stored_path, "created_at": now, "updated_at": now,
             }
-            books.append(book)
-            self.store.write("books", books)
-            return book
+            try:
+                books.append(book)
+                self.store.write("books", books)
+                return book
+            except Exception:
+                if destination is not None:
+                    destination.unlink(missing_ok=True)
+                raise
 
     def approve_book(self, admin_id: int, book_id: int) -> None:
         with self.store.transaction():
@@ -201,6 +239,8 @@ class BookRentalService:
             book = self._find(books, book_id, "책")
             if book["status"] != "APPROVED":
                 raise ValidationError("승인된 책만 대여 요청할 수 있습니다.")
+            if not is_physical_book(book):
+                raise ValidationError("PDF 자료는 대여 요청할 수 없습니다.")
             if quantity > int(book["available_quantity"]):
                 raise ValidationError("대여 가능한 수량이 없습니다.")
             requests = self.store.read("borrow_requests")
@@ -242,6 +282,8 @@ class BookRentalService:
                 raise ValidationError("처리 대기 중인 요청만 승인할 수 있습니다.")
             books = self.store.read("books")
             book = self._find(books, int(request["book_id"]), "책")
+            if not is_physical_book(book):
+                raise ValidationError("PDF 자료는 대여 승인할 수 없습니다.")
             quantity, available = int(request["quantity"]), int(book["available_quantity"])
             if book["status"] != "APPROVED" or available < quantity:
                 raise ValidationError("승인할 수 없거나 대여 가능한 수량이 부족합니다.")
@@ -281,39 +323,67 @@ class BookRentalService:
     def loans(self, actor_id: int, *, admin: bool = False) -> list[dict[str, str]]:
         self.require_role(actor_id, "ADMIN" if admin else "USER")
         self._sync_overdue()
-        rows = self.store.read("loans")
+        rows = [row for row in self.store.read("loans") if self._loan_book_is_physical(row)]
         if not admin:
             rows = [row for row in rows if int(row["borrower_id"]) == actor_id]
         return self._enrich_loans(rows)
 
-    def pdf_download(self, actor_id: int, loan_id: int) -> tuple[str, bytes]:
-        loan = self._find(self.store.read("loans"), loan_id, "대출")
+    def pdf_access_logs(self, admin_id: int) -> list[dict[str, str]]:
+        self.require_role(admin_id, "ADMIN")
+        users = {row["id"]: row for row in self.store.read("users")}
+        books = {row["id"]: row for row in self.store.read("books")}
+        return sorted([
+            {
+                **row,
+                "user_name": users.get(row["user_id"], {}).get("name", "-"),
+                "book_title": books.get(row["book_id"], {}).get("title", "-"),
+            }
+            for row in self.store.read("pdf_access_logs")
+        ], key=lambda row: row["accessed_at"], reverse=True)
+
+    def legacy_pdf_loans(self, admin_id: int) -> list[dict[str, str]]:
+        self.require_role(admin_id, "ADMIN")
+        return self._enrich_loans([row for row in self.store.read("loans") if self._loan_book_is_pdf(row)])
+
+    def pdf_download(self, actor_id: int, book_id: int) -> tuple[str, bytes]:
         actor = self._user(actor_id)
-        if not self.store.is_active(actor["active"]) or (
-            actor["role"] != "ADMIN" and int(loan["borrower_id"]) != actor_id
-        ):
+        if not self.store.is_active(actor["active"]) or actor["role"] not in {"USER", "ADMIN"}:
             raise AuthorizationError("해당 PDF를 다운로드할 권한이 없습니다.")
-        if loan["status"] not in {"LOANED", "OVERDUE"}:
-            raise AuthorizationError("현재 대여 중인 PDF만 다운로드할 수 있습니다.")
-        book = self._find(self.store.read("books"), int(loan["book_id"]), "책")
-        if book["format"] != "PDF":
+        book = self._find(self.store.read("books"), book_id, "책")
+        if not is_pdf_resource(book):
             raise ValidationError("PDF 형식의 책이 아닙니다.")
-        path = Path(book["file_path"])
-        if not book["file_path"] or not path.is_file():
+        if book["status"] != "APPROVED":
+            raise AuthorizationError("승인된 PDF만 다운로드할 수 있습니다.")
+        path = self._resolve_pdf_path(book["file_path"])
+        if not path.is_file():
             raise NotFoundError("PDF 파일을 찾을 수 없습니다.")
-        return book["file_name"] or f"{book['title']}.pdf", path.read_bytes()
+        content = path.read_bytes()
+        with self.store.transaction():
+            logs = self.store.read("pdf_access_logs")
+            logs.append({
+                "id": str(self.store.next_id(logs)),
+                "user_id": str(actor_id),
+                "book_id": str(book_id),
+                "accessed_at": iso(self.clock()),
+            })
+            self.store.write("pdf_access_logs", logs)
+        return book["file_name"] or f"{book['title']}.pdf", content
 
     def return_book(self, actor_id: int, loan_id: int) -> None:
         with self.store.transaction():
             loans = self.store.read("loans")
             loan = self._find(loans, loan_id, "대출")
             user = self._user(actor_id)
+            if not self.store.is_active(user["active"]):
+                raise AuthorizationError("대여자 또는 관리자만 반납 처리할 수 있습니다.")
+            books = self.store.read("books")
+            book = self._find(books, int(loan["book_id"]), "책")
+            if not is_physical_book(book):
+                raise ValidationError("PDF 자료는 반납 대상이 아닙니다.")
             if user["role"] != "ADMIN" and int(loan["borrower_id"]) != actor_id:
                 raise AuthorizationError("대여자 또는 관리자만 반납 처리할 수 있습니다.")
             if loan["status"] not in {"LOANED", "OVERDUE"}:
                 raise ValidationError("대여 중이거나 연체된 책만 반납할 수 있습니다.")
-            books = self.store.read("books")
-            book = self._find(books, int(loan["book_id"]), "책")
             now = iso(self.clock())
             book.update(available_quantity=str(int(book["available_quantity"]) + int(loan["quantity"])), updated_at=now)
             loan.update(status="RETURNED", returned_at=now, updated_at=now)
@@ -324,7 +394,8 @@ class BookRentalService:
         self.require_role(admin_id, "ADMIN")
         self._sync_overdue()
         users, books = self.store.read("users"), self.store.read("books")
-        requests, loans = self.store.read("borrow_requests"), self.store.read("loans")
+        requests = [row for row in self.store.read("borrow_requests") if self._request_book_is_physical(row)]
+        loans = [row for row in self.store.read("loans") if self._loan_book_is_physical(row)]
         return {
             "전체 사용자": len(users), "일반 회원": sum(row["role"] == "USER" for row in users),
             "관리자": sum(row["role"] == "ADMIN" for row in users), "전체 책": len(books),
@@ -345,7 +416,7 @@ class BookRentalService:
             loans = self.store.read("loans")
             changed, now = False, self.clock()
             for loan in loans:
-                if loan["status"] == "LOANED" and parse_time(loan["due_at"]) < now:
+                if self._loan_book_is_physical(loan) and loan["status"] == "LOANED" and parse_time(loan["due_at"]) < now:
                     loan.update(status="OVERDUE", updated_at=iso(now))
                     changed = True
             if changed:
@@ -382,7 +453,8 @@ class BookRentalService:
         books = {row["id"]: row for row in self.store.read("books")}
         return sorted([
             {**row, "borrower_name": users.get(row["borrower_id"], {}).get("name", "-"),
-             "book_title": books.get(row["book_id"], {}).get("title", "-")} for row in rows
+             "book_title": books.get(row["book_id"], {}).get("title", "-"),
+             "book_format": books.get(row["book_id"], {}).get("format", "")} for row in rows
         ], key=lambda row: row["requested_at"], reverse=True)
 
     def _enrich_loans(self, rows: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -394,3 +466,55 @@ class BookRentalService:
              "book_title": books.get(row["book_id"], {}).get("title", "-"),
              "book_format": books.get(row["book_id"], {}).get("format", "")} for row in rows
         ], key=lambda row: row["due_at"])
+
+    def _request_book_is_physical(self, request: dict[str, str]) -> bool:
+        try:
+            book = self._find(self.store.read("books"), int(request["book_id"]), "책")
+        except (KeyError, ValueError, NotFoundError):
+            return False
+        return is_physical_book(book)
+
+    def _loan_book_is_physical(self, loan: dict[str, str]) -> bool:
+        try:
+            book = self._find(self.store.read("books"), int(loan["book_id"]), "책")
+        except (KeyError, ValueError, NotFoundError):
+            return False
+        return is_physical_book(book)
+
+    def _loan_book_is_pdf(self, loan: dict[str, str]) -> bool:
+        try:
+            book = self._find(self.store.read("books"), int(loan["book_id"]), "책")
+        except (KeyError, ValueError, NotFoundError):
+            return False
+        return is_pdf_resource(book)
+
+    def _resolve_pdf_path(self, raw_path: str) -> Path:
+        if not raw_path:
+            raise NotFoundError("PDF 파일을 찾을 수 없습니다.")
+        upload_root = self.store.upload_dir.resolve()
+        path = Path(raw_path).expanduser().resolve()
+        if not path.is_relative_to(upload_root):
+            raise AuthorizationError("허용되지 않은 PDF 파일 경로입니다.")
+        return path
+
+    @staticmethod
+    def _safe_pdf_filename(name: str) -> str:
+        basename = Path(name).name.strip() or "resource.pdf"
+        stem = re.sub(r"[^A-Za-z0-9._-]+", "_", basename)
+        if not stem.lower().endswith(".pdf"):
+            stem = f"{stem}.pdf"
+        return stem
+
+    @staticmethod
+    def _validate_pdf_upload(uploaded_file: tuple[str, bytes] | None) -> None:
+        if uploaded_file is None:
+            raise ValidationError("PDF 파일을 업로드해주세요.")
+        file_name, content = uploaded_file
+        if not file_name.lower().endswith(".pdf"):
+            raise ValidationError("PDF 파일만 업로드할 수 있습니다.")
+        if not content:
+            raise ValidationError("빈 PDF 파일은 업로드할 수 없습니다.")
+        if len(content) > MAX_PDF_BYTES:
+            raise ValidationError("PDF 파일 크기는 20MB 이하여야 합니다.")
+        if not content.startswith(b"%PDF-"):
+            raise ValidationError("올바른 PDF 파일이 아닙니다.")

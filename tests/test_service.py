@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from book_rental.admin_command_runner import resolve_data_dir
+from book_rental.admin_command_runner import migrate_pdf_loans, resolve_data_dir
 from book_rental.auth import verify_password
 from book_rental.config import DEFAULT_DATA_DIR, get_data_dir
 from book_rental.errors import AuthorizationError, NotFoundError, ValidationError
 from book_rental.service import BookRentalService
-from book_rental.store import CsvStore
+from book_rental.store import BOOK_FORMAT_PDF, BOOK_FORMAT_PHYSICAL, CsvStore
 
 NOW = datetime(2026, 6, 12, 12, 0, tzinfo=timezone.utc)
 
@@ -27,17 +27,27 @@ def service(tmp_path):
 
 
 def create_approved_book(service, quantity=2, *, pdf=False):
-    book = service.create_book(
-        service.member_id,
-        title="도메인 주도 설계",
-        author="Eric Evans",
-        category="소프트웨어",
-        description="DDD 참고서",
-        book_format="PDF" if pdf else "PHYSICAL_BOOK",
-        total_quantity=quantity,
-        default_loan_days=14,
-        uploaded_file=("ddd.pdf", b"%PDF-1.4 test") if pdf else None,
-    )
+    if pdf:
+        book = service.create_book(
+            service.member_id,
+            title="도메인 주도 설계",
+            author="Eric Evans",
+            category="소프트웨어",
+            description="DDD 참고서",
+            book_format=BOOK_FORMAT_PDF,
+            uploaded_file=("ddd.pdf", b"%PDF-1.4 test"),
+        )
+    else:
+        book = service.create_book(
+            service.member_id,
+            title="도메인 주도 설계",
+            author="Eric Evans",
+            category="소프트웨어",
+            description="DDD 참고서",
+            book_format=BOOK_FORMAT_PHYSICAL,
+            total_quantity=quantity,
+            default_loan_days=14,
+        )
     service.approve_book(service.admin_id, int(book["id"]))
     return book
 
@@ -143,46 +153,125 @@ def test_second_approval_fails_without_partial_csv_updates(service):
     assert len(service.loans(service.admin_id, admin=True)) == 1
 
 
-def test_approved_pdf_is_downloadable_only_by_borrower_and_admin(service):
+def test_approved_pdf_is_downloadable_by_active_user_and_admin_without_loan(service):
     other = service.register_user("다른 회원", "25-22222222", "password2", "password2")
     book = create_approved_book(service, pdf=True)
-    request = service.create_borrow_request(service.member_id, int(book["id"]), 1)
-    loan = service.approve_request(service.admin_id, int(request["id"]))
+    before = dict(service.store.read("books")[0])
 
-    filename, content = service.pdf_download(service.member_id, int(loan["id"]))
+    filename, content = service.pdf_download(service.member_id, int(book["id"]))
     assert filename == "ddd.pdf"
     assert content.startswith(b"%PDF")
-    assert service.pdf_download(service.admin_id, int(loan["id"]))[1] == content
-    with pytest.raises(AuthorizationError, match="권한"):
-        service.pdf_download(int(other["id"]), int(loan["id"]))
+    assert service.pdf_download(service.admin_id, int(book["id"]))[1] == content
+    assert service.pdf_download(int(other["id"]), int(book["id"]))[1] == content
+    assert service.store.read("books")[0]["available_quantity"] == before["available_quantity"]
+    assert service.store.read("borrow_requests") == []
+    assert service.store.read("loans") == []
+    assert len(service.store.read("pdf_access_logs")) == 3
 
 
 def test_missing_pdf_file_returns_korean_error(service):
     book = create_approved_book(service, pdf=True)
-    request = service.create_borrow_request(service.member_id, int(book["id"]), 1)
-    loan = service.approve_request(service.admin_id, int(request["id"]))
     Path(book["file_path"]).unlink()
 
     with pytest.raises(NotFoundError, match="PDF 파일을 찾을 수 없습니다"):
-        service.pdf_download(service.member_id, int(loan["id"]))
+        service.pdf_download(service.member_id, int(book["id"]))
+    assert service.store.read("pdf_access_logs") == []
 
 
-def test_returned_pdf_is_no_longer_downloadable(service):
-    book = create_approved_book(service, pdf=True)
-    request = service.create_borrow_request(service.member_id, int(book["id"]), 1)
-    loan = service.approve_request(service.admin_id, int(request["id"]))
-    service.return_book(service.member_id, int(loan["id"]))
+def test_pending_and_rejected_pdf_are_not_downloadable(service):
+    pending = service.create_book(
+        service.member_id, title="대기 PDF", author="작가", category="분류", description="",
+        book_format=BOOK_FORMAT_PDF, uploaded_file=("pending.pdf", b"%PDF-1.4 pending"),
+    )
+    rejected = service.create_book(
+        service.member_id, title="거절 PDF", author="작가", category="분류", description="",
+        book_format=BOOK_FORMAT_PDF, uploaded_file=("rejected.pdf", b"%PDF-1.4 rejected"),
+    )
+    service.reject_book(service.admin_id, int(rejected["id"]), "불가")
 
-    with pytest.raises(AuthorizationError, match="대여 중"):
-        service.pdf_download(service.member_id, int(loan["id"]))
+    with pytest.raises(AuthorizationError, match="승인된 PDF"):
+        service.pdf_download(service.member_id, int(pending["id"]))
+    with pytest.raises(AuthorizationError, match="승인된 PDF"):
+        service.pdf_download(service.member_id, int(rejected["id"]))
 
 
 def test_pdf_requires_a_pdf_upload(service):
     with pytest.raises(ValidationError, match="PDF 파일을 업로드해주세요"):
         service.create_book(
             service.member_id, title="전자책", author="작가", category="에세이", description="",
-            book_format="PDF", total_quantity=1, default_loan_days=7,
+            book_format=BOOK_FORMAT_PDF,
         )
+
+
+def test_pdf_rejects_empty_or_non_pdf_upload(service):
+    with pytest.raises(ValidationError, match="빈 PDF"):
+        service.create_book(
+            service.member_id, title="빈 PDF", author="작가", category="에세이", description="",
+            book_format=BOOK_FORMAT_PDF, uploaded_file=("empty.pdf", b""),
+        )
+    with pytest.raises(ValidationError, match="올바른 PDF"):
+        service.create_book(
+            service.member_id, title="가짜 PDF", author="작가", category="에세이", description="",
+            book_format=BOOK_FORMAT_PDF, uploaded_file=("fake.pdf", b"not pdf"),
+        )
+
+
+def test_pdf_registration_uses_empty_quantity_and_loan_days(service):
+    book = service.create_book(
+        service.member_id, title="전자책", author="작가", category="에세이", description="",
+        book_format=BOOK_FORMAT_PDF, uploaded_file=("ebook.pdf", b"%PDF-1.4 test"),
+    )
+
+    assert book["status"] == "PENDING"
+    assert book["total_quantity"] == ""
+    assert book["available_quantity"] == ""
+    assert book["default_loan_days"] == ""
+
+
+def test_inactive_user_and_admin_cannot_register_pdf_or_physical(service):
+    rows = service.store.read("users")
+    member = next(row for row in rows if row["id"] == str(service.member_id))
+    member["active"] = "false"
+    service.store.write("users", rows)
+
+    with pytest.raises(AuthorizationError):
+        service.create_book(
+            service.member_id, title="전자책", author="작가", category="에세이", description="",
+            book_format=BOOK_FORMAT_PDF, uploaded_file=("ebook.pdf", b"%PDF-1.4 test"),
+        )
+    with pytest.raises(AuthorizationError):
+        service.create_book(
+            service.admin_id, title="관리자 책", author="작가", category="에세이", description="",
+            book_format=BOOK_FORMAT_PHYSICAL, total_quantity=1, default_loan_days=1,
+        )
+
+
+def test_pdf_cannot_enter_physical_loan_flow(service):
+    book = create_approved_book(service, pdf=True)
+
+    with pytest.raises(ValidationError, match="PDF 자료는 대여 요청할 수 없습니다"):
+        service.create_borrow_request(service.member_id, int(book["id"]), 1)
+
+    requests = service.store.read("borrow_requests")
+    requests.append({
+        "id": "1", "borrower_id": str(service.member_id), "book_id": book["id"], "quantity": "1",
+        "status": "REQUESTED", "requested_at": NOW.isoformat(timespec="seconds"), "approved_at": "",
+        "rejected_at": "", "canceled_at": "", "rejection_memo": "", "updated_at": NOW.isoformat(timespec="seconds"),
+    })
+    service.store.write("borrow_requests", requests)
+    with pytest.raises(ValidationError, match="PDF 자료는 대여 승인할 수 없습니다"):
+        service.approve_request(service.admin_id, 1)
+
+    loans = service.store.read("loans")
+    loans.append({
+        "id": "1", "borrow_request_id": "1", "borrower_id": str(service.member_id),
+        "lender_id": str(service.member_id), "book_id": book["id"], "quantity": "1",
+        "loaned_at": NOW.isoformat(timespec="seconds"), "due_at": NOW.isoformat(timespec="seconds"),
+        "returned_at": "", "status": "LOANED", "updated_at": NOW.isoformat(timespec="seconds"),
+    })
+    service.store.write("loans", loans)
+    with pytest.raises(ValidationError, match="PDF 자료는 반납 대상이 아닙니다"):
+        service.return_book(service.member_id, 1)
 
 
 def test_legacy_user_csv_schema_is_migrated_without_data_loss(tmp_path):
@@ -237,6 +326,24 @@ def test_overdue_status_is_synchronized_when_loans_are_read(tmp_path):
     assert service.loans(service.member_id)[0]["status"] == "OVERDUE"
 
 
+def test_pdf_is_excluded_from_overdue_and_dashboard_counts(service):
+    book = create_approved_book(service, pdf=True)
+    loans = service.store.read("loans")
+    loans.append({
+        "id": "1", "borrow_request_id": "1", "borrower_id": str(service.member_id),
+        "lender_id": str(service.member_id), "book_id": book["id"], "quantity": "1",
+        "loaned_at": "2026-01-01T00:00:00+00:00", "due_at": "2026-01-02T00:00:00+00:00",
+        "returned_at": "", "status": "LOANED", "updated_at": "2026-01-01T00:00:00+00:00",
+    })
+    service.store.write("loans", loans)
+
+    assert service.loans(service.member_id) == []
+    assert service.store.read("loans")[0]["status"] == "LOANED"
+    dashboard = service.dashboard(service.admin_id)
+    assert dashboard["대여 중"] == 0
+    assert dashboard["연체"] == 0
+
+
 def test_app_store_and_admin_runner_share_environment_data_dir(tmp_path, monkeypatch):
     configured = tmp_path / "shared-data"
     monkeypatch.setenv("BOOKBRIDGE_DATA_DIR", str(configured))
@@ -268,6 +375,69 @@ def test_duplicate_active_loan_is_rejected(service):
 
     with pytest.raises(ValidationError, match="중복 대여"):
         service.create_borrow_request(service.member_id, int(book["id"]), 1)
+
+
+def test_legacy_pdf_book_values_are_read_but_ignored_for_download(service):
+    book = create_approved_book(service, pdf=True)
+    rows = service.store.read("books")
+    rows[0]["total_quantity"] = "1"
+    rows[0]["available_quantity"] = "0"
+    rows[0]["default_loan_days"] = "14"
+    service.store.write("books", rows)
+
+    filename, content = service.pdf_download(service.member_id, int(book["id"]))
+
+    assert filename == "ddd.pdf"
+    assert content.startswith(b"%PDF")
+    assert service.store.read("books")[0]["available_quantity"] == "0"
+    assert service.store.read("loans") == []
+
+
+def test_pdf_download_rejects_path_outside_upload_dir(service, tmp_path):
+    book = create_approved_book(service, pdf=True)
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-1.4 outside")
+    rows = service.store.read("books")
+    rows[0]["file_path"] = str(outside)
+    service.store.write("books", rows)
+
+    with pytest.raises(AuthorizationError, match="허용되지 않은"):
+        service.pdf_download(service.member_id, int(book["id"]))
+    assert service.store.read("pdf_access_logs") == []
+
+
+def test_migrate_pdf_loans_dry_run_and_apply_are_idempotent(service, capsys):
+    physical = create_approved_book(service)
+    pdf = create_approved_book(service, pdf=True)
+    loans = service.store.read("loans")
+    loans.extend([
+        {
+            "id": "1", "borrow_request_id": "1", "borrower_id": str(service.member_id),
+            "lender_id": str(service.member_id), "book_id": pdf["id"], "quantity": "1",
+            "loaned_at": NOW.isoformat(timespec="seconds"), "due_at": NOW.isoformat(timespec="seconds"),
+            "returned_at": "", "status": "LOANED", "updated_at": NOW.isoformat(timespec="seconds"),
+        },
+        {
+            "id": "2", "borrow_request_id": "2", "borrower_id": str(service.member_id),
+            "lender_id": str(service.member_id), "book_id": physical["id"], "quantity": "1",
+            "loaned_at": NOW.isoformat(timespec="seconds"), "due_at": NOW.isoformat(timespec="seconds"),
+            "returned_at": "", "status": "LOANED", "updated_at": NOW.isoformat(timespec="seconds"),
+        },
+    ])
+    service.store.write("loans", loans)
+
+    assert migrate_pdf_loans(service.store.data_dir, apply=False) == 0
+    assert service.store.read("loans")[0]["status"] == "LOANED"
+    assert "활성 PDF 대출 수: 1" in capsys.readouterr().out
+
+    assert migrate_pdf_loans(service.store.data_dir, apply=True) == 0
+    after = service.store.read("loans")
+    assert after[0]["status"] == "RETURNED"
+    assert after[1]["status"] == "LOANED"
+    assert service.store.read("admin_logs")[-1]["action"] == "PDF_LOAN_MIGRATED"
+
+    assert migrate_pdf_loans(service.store.data_dir, apply=True) == 0
+    assert len([row for row in service.store.read("admin_logs") if row["action"] == "PDF_LOAN_MIGRATED"]) == 1
 
 
 def test_numeric_military_id_and_true_active_string_authenticate(tmp_path):

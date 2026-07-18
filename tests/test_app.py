@@ -27,13 +27,12 @@ def registration_app(tmp_path, monkeypatch):
 
 
 def complete_pdf_form(app: AppTest, *, include_file: bool) -> None:
-    app.selectbox[0].select("PDF")
-    app.text_input[0].set_value("테스트 PDF")
-    app.text_input[1].set_value("테스트 저자")
-    app.text_input[2].set_value("테스트")
+    app.text_input(key="pdf-title").set_value("테스트 PDF")
+    app.text_input(key="pdf-author").set_value("테스트 저자")
+    app.text_input(key="pdf-category").set_value("테스트")
     if include_file:
-        app.file_uploader[0].set_value(("test.pdf", b"%PDF-1.4 test", "application/pdf"))
-    app.button(key="FormSubmitter:book-form-승인 요청").click()
+        app.file_uploader(key="pdf-upload").set_value(("test.pdf", b"%PDF-1.4 test", "application/pdf"))
+    app.button(key="FormSubmitter:pdf-resource-form-승인 요청").click()
     app.run()
 
 
@@ -41,8 +40,8 @@ def test_pdf_uploader_is_enabled_on_initial_render(registration_app):
     app, _ = registration_app
 
     assert len(app.file_uploader) == 1
-    assert app.file_uploader[0].disabled is False
-    assert app.file_uploader[0].allowed_type == [".pdf"]
+    assert app.file_uploader(key="pdf-upload").disabled is False
+    assert app.file_uploader(key="pdf-upload").allowed_type == [".pdf"]
 
 
 def test_pdf_submission_without_upload_shows_korean_error(registration_app):
@@ -65,6 +64,9 @@ def test_pdf_submission_succeeds_and_confirm_moves_to_lender_books(registration_
     assert len(service.store.read("books")) == 1
     book = service.store.read("books")[0]
     assert book["status"] == "PENDING"
+    assert book["total_quantity"] == ""
+    assert book["available_quantity"] == ""
+    assert book["default_loan_days"] == ""
     assert book["file_name"] == "test.pdf"
     assert Path(book["file_path"]).read_bytes() == b"%PDF-1.4 test"
 

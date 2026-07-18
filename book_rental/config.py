@@ -13,3 +13,13 @@ def get_data_dir() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     return DEFAULT_DATA_DIR.resolve()
+
+
+def normalize_profile(value: str | None) -> str:
+    """Normalize an application profile value for safe comparisons."""
+    return (value or "").strip().casefold()
+
+
+def get_app_profile() -> str:
+    """Return the normalized APP_PROFILE value, or an empty string when unset."""
+    return normalize_profile(os.environ.get("APP_PROFILE"))

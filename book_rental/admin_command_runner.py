@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .auth import PasswordHashError, is_password_hash_valid, verify_password
 from .config import get_data_dir
 from .errors import BookRentalError
-from .service import BookRentalService
-from .store import CsvStore
+from .service import BookRentalService, iso
+from .store import BOOK_FORMAT_PDF, CsvStore
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
     debug = subparsers.add_parser("debug-login", help="사용자 CSV와 비밀번호 검증 상태를 안전하게 진단합니다.")
     debug.add_argument("--military-id", required=True)
     debug.add_argument("--data-dir", help="BOOKBRIDGE_DATA_DIR보다 우선하는 데이터 디렉터리")
+    migrate = subparsers.add_parser("migrate-pdf-loans", help="기존 활성 PDF 대출을 반납 완료로 종료합니다.")
+    migrate.add_argument("--data-dir", help="BOOKBRIDGE_DATA_DIR보다 우선하는 데이터 디렉터리")
+    mode = migrate.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="변경 없이 대상 건수만 확인합니다.")
+    mode.add_argument("--apply", action="store_true", help="백업 후 활성 PDF 대출을 RETURNED로 변경합니다.")
     return parser
 
 
@@ -59,6 +67,79 @@ def debug_login(data_dir: Path, military_id: str) -> int:
     return 0 if verified and store.is_active(user["active"]) else 1
 
 
+def migrate_pdf_loans(data_dir: Path, *, apply: bool = False) -> int:
+    store = CsvStore(data_dir)
+    books = store.read("books")
+    book_by_id = {row["id"]: row for row in books}
+    pdf_book_ids = {row["id"] for row in books if row["format"] == BOOK_FORMAT_PDF}
+    requests = store.read("borrow_requests")
+    loans = store.read("loans")
+    pdf_requests = [row for row in requests if row.get("book_id") in pdf_book_ids]
+    active_pdf_loans = [row for row in loans if row.get("book_id") in pdf_book_ids and row.get("status") in {"LOANED", "OVERDUE"}]
+    anomalies = []
+    for row in requests:
+        if row.get("book_id") not in book_by_id:
+            anomalies.append(f"borrow_requests.csv #{row.get('id', '?')} missing book_id={row.get('book_id', '')}")
+    for row in loans:
+        if row.get("book_id") not in book_by_id:
+            anomalies.append(f"loans.csv #{row.get('id', '?')} missing book_id={row.get('book_id', '')}")
+
+    print(f"대상 PDF 책 수: {len(pdf_book_ids)}")
+    print(f"기존 PDF 요청 수: {len(pdf_requests)}")
+    print(f"활성 PDF 대출 수: {len(active_pdf_loans)}")
+    print(f"변경될 행 수: {len(active_pdf_loans)}")
+    print(f"데이터 이상 항목: {len(anomalies)}")
+    for item in anomalies:
+        print(f"- {item}")
+
+    if not apply:
+        return 0
+    if not active_pdf_loans:
+        print("변경할 활성 PDF 대출이 없습니다.")
+        return 0
+
+    backup_dir = _backup_tables(store, ["loans", "admin_logs"])
+    now = datetime.now(timezone.utc)
+    active_ids = {row["id"] for row in active_pdf_loans}
+    with store.transaction():
+        loans = store.read("loans")
+        changed = []
+        for loan in loans:
+            if loan["id"] in active_ids and loan["status"] in {"LOANED", "OVERDUE"}:
+                before = dict(loan)
+                loan.update(status="RETURNED", returned_at=iso(now), updated_at=iso(now))
+                changed.append((before, dict(loan)))
+        store.write("loans", loans)
+        logs = store.read("admin_logs")
+        for before, after in changed:
+            logs.append({
+                "id": str(store.next_id(logs)),
+                "admin_id": "0",
+                "admin_name": "CLI",
+                "action": "PDF_LOAN_MIGRATED",
+                "target_type": "CSV_ROW",
+                "target_file": "loans.csv",
+                "target_id": after["id"],
+                "memo": "기존 활성 PDF 대출을 디지털 자료 정책에 맞게 RETURNED로 종료",
+                "before_summary": json.dumps(before, ensure_ascii=False, sort_keys=True)[:2000],
+                "after_summary": json.dumps(after, ensure_ascii=False, sort_keys=True)[:2000],
+                "created_at": iso(now),
+            })
+        store.write("admin_logs", logs)
+    print(f"백업 디렉터리: {backup_dir}")
+    print(f"마이그레이션 완료: {len(active_ids)}건")
+    return 0
+
+
+def _backup_tables(store: CsvStore, tables: list[str]) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    backup_dir = store.data_dir / "backups" / f"pdf_loan_migration_{stamp}"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    for table in tables:
+        shutil.copy2(store.path(table), backup_dir / f"{table}.csv")
+    return backup_dir
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -67,6 +148,12 @@ def main() -> int:
             return debug_login(resolve_data_dir(args.data_dir), args.military_id)
         except Exception as error:
             print(f"로그인 진단 중 오류가 발생했습니다: {type(error).__name__}: {error}")
+            return 1
+    if args.command == "migrate-pdf-loans":
+        try:
+            return migrate_pdf_loans(resolve_data_dir(args.data_dir), apply=args.apply)
+        except Exception as error:
+            print(f"PDF 대출 마이그레이션 중 오류가 발생했습니다: {type(error).__name__}: {error}")
             return 1
     if args.command != "create-admin":
         parser.print_help()

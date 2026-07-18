@@ -7,12 +7,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from book_rental.admin_data import AdminDataService
+from book_rental.bootstrap import bootstrap_dev_admin
 from book_rental.config import get_data_dir
 from book_rental.errors import BookRentalError
 from book_rental.login import attempt_login
 from book_rental.service import BookRentalService
 from book_rental.sessions import SESSION_MINUTES, SessionService
-from book_rental.store import SCHEMAS, CsvStore
+from book_rental.store import BOOK_FORMAT_PDF, BOOK_FORMAT_PHYSICAL, SCHEMAS, CsvStore
 
 st.set_page_config(page_title="BookBridge", page_icon="📚", layout="wide")
 
@@ -25,6 +26,20 @@ service = BookRentalService(store)
 admin_data = AdminDataService(store)
 sessions = SessionService(store)
 COOKIE_NAME = "bookbridge_session"
+
+try:
+    bootstrap_result = bootstrap_dev_admin(service, logger=LOGGER)
+except BookRentalError as error:
+    LOGGER.error("Development admin bootstrap failed: %s", error)
+    st.error(f"개발 관리자 자동 생성 중 오류가 발생했습니다: {error}")
+except Exception:
+    LOGGER.exception("Development admin bootstrap failed unexpectedly")
+    st.error("개발 관리자 자동 생성 중 데이터 오류가 발생했습니다. 서버 로그를 확인하세요.")
+else:
+    if bootstrap_result.status == "missing_config":
+        st.warning(f"{bootstrap_result.message} 누락된 설정: {', '.join(bootstrap_result.missing)}")
+    elif bootstrap_result.status in {"invalid_config", "conflict_user"}:
+        st.error(bootstrap_result.message)
 
 
 def run(action, success: str) -> None:
@@ -158,7 +173,26 @@ if page == "책 둘러보기":
             left.subheader(book["title"])
             left.write(f"**저자** {book['author']} · **카테고리** {book['category']}")
             left.write(book["description"] or "설명이 없습니다.")
-            left.caption(f"형식: {'PDF' if book['format'] == 'PDF' else '실물 도서'} · 등록자: {book['lender_name']}")
+            if book["format"] == BOOK_FORMAT_PDF:
+                left.caption(f"PDF 자료 · 등록자: {book['lender_name']}")
+                right.info("디지털 자료")
+                if role in {"USER", "ADMIN"}:
+                    prepared_key = f"pdf-download-{book['id']}"
+                    if right.button("PDF 다운로드", key=f"prepare-pdf-{book['id']}", type="primary"):
+                        try:
+                            st.session_state[prepared_key] = service.pdf_download(actor_id, int(book["id"]))
+                        except BookRentalError as error:
+                            right.warning(str(error))
+                    if prepared := st.session_state.get(prepared_key):
+                        file_name, content = prepared
+                        right.download_button(
+                            "파일 저장", data=content, file_name=file_name,
+                            mime="application/pdf", key=f"save-pdf-{book['id']}",
+                        )
+                else:
+                    right.caption("로그인 후 PDF를 다운로드할 수 있습니다.")
+                continue
+            left.caption(f"형식: 실물 도서 · 등록자: {book['lender_name']}")
             right.metric("대여 가능 수량", f"{book['available_quantity']} / {book['total_quantity']}")
             if role == "USER":
                 available = int(book["available_quantity"])
@@ -244,18 +278,6 @@ elif page == "내 대여":
     st.subheader("대출 현황")
     loans = service.loans(actor_id)
     show_table(loans, ["id", "book_title", "book_format", "quantity", "loaned_at", "due_at", "returned_at", "status"])
-    downloadable = [loan for loan in loans if loan["book_format"] == "PDF" and loan["status"] in {"LOANED", "OVERDUE"}]
-    if downloadable:
-        st.subheader("대여 중인 PDF")
-        for loan in downloadable:
-            try:
-                file_name, content = service.pdf_download(actor_id, int(loan["id"]))
-                st.download_button(
-                    f"{loan['book_title']} PDF 다운로드", data=content, file_name=file_name,
-                    mime="application/pdf", key=f"pdf-{loan['id']}",
-                )
-            except BookRentalError as error:
-                st.warning(f"{loan['book_title']}: {error}")
     active = [loan for loan in loans if loan["status"] in {"LOANED", "OVERDUE"}]
     if active:
         selected = st.selectbox("반납할 대출", active, format_func=lambda row: f"#{row['id']} {row['book_title']}")
@@ -275,27 +297,22 @@ elif page == "책 등록":
             go_to("내 등록 도서")
             st.rerun()
     else:
-        with st.form("book-form", clear_on_submit=False):
-            title = st.text_input("제목")
-            author = st.text_input("저자")
-            category = st.text_input("카테고리")
-            description = st.text_area("설명")
-            book_format = st.selectbox("형식", ["PHYSICAL_BOOK", "PDF"], format_func=lambda value: "실물 도서" if value == "PHYSICAL_BOOK" else "PDF")
-            total_quantity = st.number_input("총 수량", 1, 100, 1)
-            loan_days = st.number_input("기본 대여 기간(일)", 1, 365, 14)
-            upload = st.file_uploader("PDF 파일", type=["pdf"])
-            st.caption("PDF 형식으로 등록할 때는 PDF 파일을 반드시 첨부해주세요.")
-            submitted = st.form_submit_button("승인 요청", type="primary")
-        if submitted:
-            if book_format == "PDF" and upload is None:
-                st.error("PDF 파일을 업로드해주세요.")
-            else:
-                uploaded = (upload.name, upload.getvalue()) if book_format == "PDF" and upload else None
+        physical_tab, pdf_tab = st.tabs(["실물 도서", "PDF 자료"])
+        with physical_tab:
+            with st.form("physical-book-form", clear_on_submit=False):
+                title = st.text_input("제목", key="physical-title")
+                author = st.text_input("저자", key="physical-author")
+                category = st.text_input("카테고리", key="physical-category")
+                description = st.text_area("설명", key="physical-description")
+                total_quantity = st.number_input("총 수량", 1, 100, 1, key="physical-total-quantity")
+                loan_days = st.number_input("기본 대여 기간(일)", 1, 365, 14, key="physical-loan-days")
+                submitted = st.form_submit_button("승인 요청", type="primary")
+            if submitted:
                 try:
                     service.create_book(
                         actor_id, title=title, author=author, category=category, description=description,
-                        book_format=book_format, total_quantity=int(total_quantity),
-                        default_loan_days=int(loan_days), uploaded_file=uploaded,
+                        book_format=BOOK_FORMAT_PHYSICAL, total_quantity=int(total_quantity),
+                        default_loan_days=int(loan_days),
                     )
                     st.session_state.book_registration_completed = True
                     st.session_state.book_registration_toast_pending = True
@@ -303,7 +320,30 @@ elif page == "책 등록":
                 except BookRentalError as error:
                     st.error(str(error))
                 except Exception:
-                    LOGGER.exception("Book registration failed unexpectedly")
+                    LOGGER.exception("Physical book registration failed unexpectedly")
+                    st.error("책 등록 처리 중 오류가 발생했습니다.")
+        with pdf_tab:
+            with st.form("pdf-resource-form", clear_on_submit=False):
+                title = st.text_input("제목", key="pdf-title")
+                author = st.text_input("저자", key="pdf-author")
+                category = st.text_input("카테고리", key="pdf-category")
+                description = st.text_area("설명", key="pdf-description")
+                upload = st.file_uploader("PDF 파일", type=["pdf"], key="pdf-upload")
+                submitted = st.form_submit_button("승인 요청", type="primary")
+            if submitted:
+                uploaded = (upload.name, upload.getvalue()) if upload else None
+                try:
+                    service.create_book(
+                        actor_id, title=title, author=author, category=category, description=description,
+                        book_format=BOOK_FORMAT_PDF, uploaded_file=uploaded,
+                    )
+                    st.session_state.book_registration_completed = True
+                    st.session_state.book_registration_toast_pending = True
+                    st.rerun()
+                except BookRentalError as error:
+                    st.error(str(error))
+                except Exception:
+                    LOGGER.exception("PDF resource registration failed unexpectedly")
                     st.error("책 등록 처리 중 오류가 발생했습니다.")
 
 elif page == "내 등록 도서":
@@ -335,13 +375,16 @@ elif page == "도서 승인":
 elif page == "대여 승인":
     st.title("대여 승인")
     requests = service.all_requests(actor_id)
-    show_table(requests, ["id", "book_title", "borrower_name", "quantity", "status", "requested_at", "rejection_memo"])
+    show_table(requests, ["id", "book_title", "book_format", "borrower_name", "quantity", "status", "requested_at", "rejection_memo"])
     pending = [row for row in requests if row["status"] == "REQUESTED"]
+    legacy_pdf_pending = [row for row in pending if row["book_format"] == BOOK_FORMAT_PDF]
+    if legacy_pdf_pending:
+        st.warning("승인 대기 중인 레거시 PDF 요청이 있습니다. 신규 정책에서는 PDF 요청을 승인할 수 없으며 거절 또는 별도 정리가 필요합니다.")
     if pending:
         selected = st.selectbox("처리할 요청", pending, format_func=lambda row: f"#{row['id']} {row['book_title']} / {row['borrower_name']}")
         memo = st.text_input("거절 사유")
         approve, reject = st.columns(2)
-        if approve.button("승인", type="primary", use_container_width=True):
+        if approve.button("승인", type="primary", use_container_width=True, disabled=selected["book_format"] == BOOK_FORMAT_PDF):
             run(lambda: service.approve_request(actor_id, int(selected["id"])), "대여 요청을 승인했습니다.")
         if reject.button("거절", use_container_width=True):
             run(lambda: service.reject_request(actor_id, int(selected["id"]), memo), "대여 요청을 거절했습니다.")
@@ -350,12 +393,10 @@ elif page == "전체 대출":
     st.title("전체 대출")
     loans = service.loans(actor_id, admin=True)
     show_table(loans, ["id", "book_title", "borrower_name", "lender_name", "book_format", "quantity", "loaned_at", "due_at", "returned_at", "status"])
-    for loan in [row for row in loans if row["book_format"] == "PDF" and row["status"] in {"LOANED", "OVERDUE"}]:
-        try:
-            file_name, content = service.pdf_download(actor_id, int(loan["id"]))
-            st.download_button(f"#{loan['id']} {loan['book_title']} PDF 확인", content, file_name, "application/pdf", key=f"admin-pdf-{loan['id']}")
-        except BookRentalError as error:
-            st.warning(f"{loan['book_title']}: {error}")
+    legacy_pdf_loans = service.legacy_pdf_loans(actor_id)
+    if legacy_pdf_loans:
+        st.warning("레거시 PDF 대출 기록이 있습니다. 신규 PDF 이용은 이 목록에 추가되지 않습니다.")
+        show_table(legacy_pdf_loans, ["id", "book_title", "borrower_name", "status", "loaned_at", "returned_at"])
     active = [loan for loan in loans if loan["status"] in {"LOANED", "OVERDUE"}]
     if active:
         selected = st.selectbox("관리자 반납 처리", active, format_func=lambda row: f"#{row['id']} {row['book_title']} / {row['borrower_name']}")
@@ -383,15 +424,15 @@ elif page == "데이터 관리":
         st.caption(f"현재 데이터 디렉터리: {DATA_DIR}")
         labels = {
             "사용자 관리": "users", "도서 관리": "books", "대여 요청 관리": "borrow_requests",
-            "대출 관리": "loans", "관리자 로그 보기": "admin_logs",
+            "대출 관리": "loans", "관리자 로그 보기": "admin_logs", "PDF 이용 기록": "pdf_access_logs",
         }
         section = st.radio("관리 대상", list(labels), horizontal=True, key="data-management-section")
         table = labels[section]
         try:
             rows = admin_data.read_table(actor, table)
             frame = pd.DataFrame(rows, columns=SCHEMAS[table])
-            if table == "admin_logs":
-                st.info("관리자 로그는 데이터 무결성을 위해 조회 전용입니다.")
+            if table in {"admin_logs", "pdf_access_logs"}:
+                st.info("관리자 로그와 PDF 이용 기록은 데이터 무결성을 위해 조회 전용입니다.")
                 st.dataframe(frame, use_container_width=True, hide_index=True)
             else:
                 st.caption("행을 추가·수정하거나 왼쪽 행 메뉴로 삭제한 뒤 미리보기와 저장을 진행하세요.")

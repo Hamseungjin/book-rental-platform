@@ -8,7 +8,7 @@ from book_rental.admin_data import AdminDataService
 from book_rental.auth import verify_password
 from book_rental.errors import AuthorizationError, ValidationError
 from book_rental.service import BookRentalService
-from book_rental.store import SCHEMAS, CsvStore
+from book_rental.store import BOOK_FORMAT_PDF, BOOK_FORMAT_PHYSICAL, SCHEMAS, CsvStore
 
 NOW = datetime(2026, 6, 13, 10, 30, tzinfo=timezone.utc)
 
@@ -24,8 +24,17 @@ def managed(tmp_path):
 
 def book_row(row_id="1", title="책", quantity="2"):
     return dict(zip(SCHEMAS["books"], [
-        row_id, "2", title, "저자", "분류", "설명", "PHYSICAL_BOOK", quantity, quantity,
+        row_id, "2", title, "저자", "분류", "설명", BOOK_FORMAT_PHYSICAL, quantity, quantity,
         "14", "APPROVED", "", "", "", NOW.isoformat(), NOW.isoformat(),
+    ]))
+
+
+def pdf_row(store, row_id="9"):
+    path = store.upload_dir / f"{row_id}.pdf"
+    path.write_bytes(b"%PDF-1.4 admin")
+    return dict(zip(SCHEMAS["books"], [
+        row_id, "2", "PDF", "저자", "분류", "설명", BOOK_FORMAT_PDF, "", "",
+        "", "APPROVED", "", "admin.pdf", str(path), NOW.isoformat(), NOW.isoformat(),
     ]))
 
 
@@ -64,9 +73,48 @@ def test_save_creates_timestamped_backup(managed):
 
 def test_invalid_book_quantity_is_not_saved(managed):
     data, store, admin, _ = managed
-    with pytest.raises(ValidationError, match="음수"):
+    with pytest.raises(ValidationError, match="총수량"):
         data.save_table(admin, "books", [book_row(quantity="-1")])
     assert store.read("books") == []
+
+
+def test_admin_data_accepts_pdf_without_quantity_but_requires_file(managed):
+    data, store, admin, _ = managed
+
+    data.save_table(admin, "books", [pdf_row(store)])
+    saved = store.read("books")[0]
+    assert saved["format"] == BOOK_FORMAT_PDF
+    assert saved["total_quantity"] == ""
+    assert saved["default_loan_days"] == ""
+
+    invalid = pdf_row(store, row_id="10")
+    invalid["file_path"] = ""
+    with pytest.raises(ValidationError, match="file_path"):
+        data.save_table(admin, "books", [invalid])
+
+
+def test_admin_data_rejects_pdf_request_and_loan_references(managed):
+    data, store, admin, _ = managed
+    data.save_table(admin, "books", [pdf_row(store)])
+    request = dict(zip(SCHEMAS["borrow_requests"], [
+        "1", "2", "9", "1", "REQUESTED", NOW.isoformat(), "", "", "", "", NOW.isoformat(),
+    ]))
+    with pytest.raises(ValidationError, match="실물 도서만"):
+        data.save_table(admin, "borrow_requests", [request])
+    loan = dict(zip(SCHEMAS["loans"], [
+        "1", "1", "2", "2", "9", "1", NOW.isoformat(), NOW.isoformat(), "", "LOANED", NOW.isoformat(),
+    ]))
+    with pytest.raises(ValidationError, match="실물 도서만"):
+        data.save_table(admin, "loans", [loan])
+
+
+def test_pdf_access_logs_are_read_only(managed):
+    data, store, admin, _ = managed
+    store.write("pdf_access_logs", [{"id": "1", "user_id": "2", "book_id": "9", "accessed_at": NOW.isoformat()}])
+
+    assert data.read_table(admin, "pdf_access_logs")[0]["id"] == "1"
+    with pytest.raises(AuthorizationError, match="조회 전용"):
+        data.save_table(admin, "pdf_access_logs", [])
 
 
 def test_duplicate_military_id_is_not_saved(managed):
